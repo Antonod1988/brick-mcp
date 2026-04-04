@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from brick_mcp import io_file, ldraw
-from brick_mcp._helpers import err, ok
+from brick_mcp._helpers import err, ok, ok_with_render
 from brick_mcp.model import StudioProject, get_model, set_model
 from brick_mcp.server import mcp
 
@@ -23,7 +23,9 @@ def new_model(name: str = "model") -> dict:
     """
     project = StudioProject.new(name)
     set_model(project)
-    return ok(project.info(), f"Created new model '{project.root_submodel}'")
+    return ok_with_render(
+        project, project.info(), f"Created new model '{project.root_submodel}'"
+    )
 
 
 @mcp.tool
@@ -72,7 +74,7 @@ def open_model(path: str) -> dict:
 
     project = StudioProject.from_blocks(path, blocks, raw_entries)
     set_model(project)
-    return ok(project.info(), f"Opened {os.path.basename(path)}")
+    return ok_with_render(project, project.info(), f"Opened {os.path.basename(path)}")
 
 
 @mcp.tool
@@ -117,7 +119,7 @@ def save_model(path: str = "") -> dict:
 
     project.source_path = save_path
     project._dirty = False
-    return ok(message=f"Saved to {save_path}")
+    return ok_with_render(project, message=f"Saved to {save_path}")
 
 
 @mcp.tool

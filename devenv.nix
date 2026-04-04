@@ -14,6 +14,7 @@ let
         pkgs.nixfmt
         pkgs.ruff
         pkgs.cairo
+        (pkgs.callPackage ./pkgs/ldview.nix { })
       ];
     };
 in

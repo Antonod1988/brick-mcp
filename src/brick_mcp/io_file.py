@@ -37,7 +37,7 @@ def _open_zip(path: str):
         if names:
             zf.read(names[0])
         return zf
-    except (_zipfile.BadZipFile, RuntimeError):
+    except _zipfile.BadZipFile, RuntimeError:
         if zf is not None:
             zf.close()
     except Exception:
@@ -46,6 +46,7 @@ def _open_zip(path: str):
 
     try:
         import pyzipper
+
         zf = pyzipper.AESZipFile(path, "r")
         zf.setpassword(IO_PASSWORD)
         return zf

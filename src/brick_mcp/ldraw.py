@@ -91,8 +91,15 @@ def _parse_v2_part_line(tokens: list[str]) -> PartLine:
     matrix = tuple(float(tokens[i]) for i in range(7, 16))
     part_file = " ".join(tokens[16:])
     return PartLine(
-        color=color, x=x, y=y, z=z, matrix=matrix, part_file=part_file,
-        _uid=uid, _group_id=group_id, _selected=selected,
+        color=color,
+        x=x,
+        y=y,
+        z=z,
+        matrix=matrix,
+        part_file=part_file,
+        _uid=uid,
+        _group_id=group_id,
+        _selected=selected,
     )
 
 
@@ -235,7 +242,12 @@ def to_v2_ldraw_text(blocks: list[tuple[str, list[Command]]]) -> str:
     import itertools
 
     max_uid = max(
-        (cmd._uid for _, cmds in blocks for cmd in cmds if isinstance(cmd, PartLine) and cmd._uid),
+        (
+            cmd._uid
+            for _, cmds in blocks
+            for cmd in cmds
+            if isinstance(cmd, PartLine) and cmd._uid
+        ),
         default=0,
     )
     uid_iter = itertools.count(max_uid + 1)

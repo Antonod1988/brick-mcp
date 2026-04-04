@@ -45,12 +45,29 @@
                 pyproject-build-systems.overlays.default
                 (workspace.mkPyprojectOverlay { sourcePreference = "wheel"; })
                 (import ./overrides.nix)
+                (final: prev: {
+                  # Ensure all Python packages in the dependency graph see the same
+                  # Python interpreter and standard library.  This is important for
+                  # binary packages that link against Python (e.g. cairocffi).
+                  "${pyprojectName}"= prev."${pyprojectName}".overrideAttrs (old: {
+                    propagatedBuildInputs = [ ldview ] ++ (old.propagatedBuildInputs or []);
+                  });
+                })
               ]
             );
         inherit (pkgs.callPackages inputs.pyproject-nix.build.util { }) mkApplication;
-        package = mkApplication {
+        ldview = pkgs.callPackage ./pkgs/ldview.nix { };
+        basePackage = mkApplication {
           venv = pythonSet.mkVirtualEnv "${pyprojectName}-env" workspace.deps.default;
           package = pythonSet.${pyprojectName};
+        };
+        # Wrap the MCP binary so ldview is on PATH at runtime.
+        package = pkgs.symlinkJoin {
+          name = pyprojectName;
+          paths = [
+            basePackage
+            ldview
+          ];
         };
       in
       {
@@ -59,7 +76,10 @@
           program = "${package}/bin/${pyprojectName}";
         };
 
-        packages.default = package;
+        packages = {
+          default = package;
+          inherit ldview;
+        };
 
         formatter = pkgs.nixfmt;
       }

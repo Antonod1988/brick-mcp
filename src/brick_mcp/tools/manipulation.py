@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from brick_mcp._helpers import err, ok
+from brick_mcp._helpers import err, ok, ok_with_render
 from brick_mcp.model import get_model
 from brick_mcp.server import mcp
 
@@ -51,7 +51,7 @@ def add_part(
         return err(str(e), "INVALID_VALUE")
 
     part_dict = project._part_as_dict(pid, submodel or None)
-    return ok(part_dict, f"Added {part_number} (id={pid})")
+    return ok_with_render(project, part_dict, f"Added {part_number} (id={pid})")
 
 
 @mcp.tool
@@ -77,7 +77,7 @@ def remove_part(part_id: str, submodel: str = "") -> dict:
 
     if not removed:
         return err(f"Part '{part_id}' not found", "PART_NOT_FOUND")
-    return ok({"removed": True, "part_id": part_id})
+    return ok_with_render(project, {"removed": True, "part_id": part_id})
 
 
 @mcp.tool
@@ -113,7 +113,7 @@ def move_part(
     if not moved:
         return err(f"Part '{part_id}' not found", "PART_NOT_FOUND")
     part_dict = project._part_as_dict(part_id, submodel or None)
-    return ok(part_dict)
+    return ok_with_render(project, part_dict)
 
 
 @mcp.tool
@@ -153,7 +153,7 @@ def rotate_part(
     if not rotated:
         return err(f"Part '{part_id}' not found", "PART_NOT_FOUND")
     part_dict = project._part_as_dict(part_id, submodel or None)
-    return ok(part_dict)
+    return ok_with_render(project, part_dict)
 
 
 @mcp.tool
@@ -181,7 +181,7 @@ def change_color(part_id: str, color: int, submodel: str = "") -> dict:
     if not changed:
         return err(f"Part '{part_id}' not found", "PART_NOT_FOUND")
     part_dict = project._part_as_dict(part_id, submodel or None)
-    return ok(part_dict)
+    return ok_with_render(project, part_dict)
 
 
 @mcp.tool
@@ -207,7 +207,7 @@ def add_step(submodel: str = "") -> dict:
     except KeyError as e:
         return err(str(e), "SUBMODEL_NOT_FOUND")
 
-    return ok({"step_count": count})
+    return ok_with_render(project, {"step_count": count})
 
 
 @mcp.tool
@@ -234,11 +234,12 @@ def remove_step(step_index: int, submodel: str = "") -> dict:
         return err(str(e), "SUBMODEL_NOT_FOUND")
 
     if not removed:
-        return err(
-            f"Step index {step_index} out of range", "STEP_NOT_FOUND"
-        )
+        return err(f"Step index {step_index} out of range", "STEP_NOT_FOUND")
 
     from brick_mcp.model import StudioProject as _SP
+
     sd = project._submodel(submodel or None)
     remaining = _SP._count_steps(sd)
-    return ok({"removed_step_index": step_index, "step_count": remaining})
+    return ok_with_render(
+        project, {"removed_step_index": step_index, "step_count": remaining}
+    )

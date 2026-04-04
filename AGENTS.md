@@ -23,7 +23,7 @@ src/
     ldraw.py                   LDraw parser + serializer (type-1 and type-11)
     io_file.py                 .io ZIP read/write (plain + AES fallback)
     colors.py                  LDraw color code database
-    _helpers.py                ok()/err() response helpers shared by all tools
+    _helpers.py                ok()/err()/ok_with_render()/try_render() helpers
     tools/
       __init__.py              Imports all tool sub-modules to trigger @mcp.tool() registration
       file_ops.py              new_model, open_model, save_model, get_model_info
@@ -31,6 +31,9 @@ src/
       manipulation.py          add_part, remove_part, move_part, rotate_part,
                                change_color, add_step, remove_step
       parts.py                 search_parts, list_colors, get_color_info
+      render.py                render_model (PNG rendering via LDView)
+pkgs/
+  ldview.nix                   Nix derivation for LDView headless renderer
 tests/
   conftest.py                  Shared fixtures
   test_io_file.py              ZIP read/write tests
@@ -162,9 +165,16 @@ def ok(data=None, message="") -> dict:
 
 def err(message, code="ERROR") -> dict:
     """Return {"ok": False, "error": message, "code": code}."""
+
+def try_render(project, width=800, height=600) -> Image | None:
+    """Best-effort render via ldview. Returns Image or None if unavailable."""
+
+def ok_with_render(project, data=None, message="") -> list | dict:
+    """Like ok(), but appends a PNG render when ldview is on PATH.
+    Returns [dict, Image] when rendering succeeds, plain dict otherwise."""
 ```
 
-All tools must return one of these two shapes. Never return raw dicts or raise exceptions to the MCP caller.
+All mutation tools should use `ok_with_render()` so every edit automatically includes a visual preview. Error responses always use `err()`. Read-only inspection tools use plain `ok()`.
 
 ---
 
@@ -174,6 +184,7 @@ All tools must return one of these two shapes. Never return raw dicts or raise e
 2. Decorate the function with `@mcp.tool` (import `mcp` from `brick_mcp.server`).
 3. Import `get_model` from `brick_mcp.model` — call it at invocation time, never at import time.
 4. Return `ok(data, message)` or `err(message, code)`.
+   - For **mutation** tools, use `ok_with_render(project, data, message)` instead of `ok()`.
 5. If you add a new sub-module, import it in `src/brick_mcp/tools/__init__.py`.
 6. Update the `INSTRUCTIONS` string in `server.py` if the tool changes the user-facing workflow.
 
@@ -199,7 +210,7 @@ def my_tool(param: str, submodel: str = "") -> dict:
 
 ## Key invariants to maintain
 
-1. **Every tool returns `ok()` or `err()`.** Never return `None`, raise exceptions, or return arbitrary dicts.
+1. **Mutation tools use `ok_with_render()`, read-only tools use `ok()`, errors use `err()`.** `ok_with_render()` returns `[dict, Image]` when ldview is available, plain `dict` otherwise — FastMCP converts both to proper MCP content blocks. `render_model` returns a bare `Image` on success and `err()` on failure. Tools must never return `None`, raise exceptions, or return arbitrary dicts.
 2. **`get_model()` — always at call time.** No module-level references to the model object.
 3. **UIDs must round-trip.** When serializing to `modelv2.ldr`, existing `_uid` values must be preserved exactly — Studio tracks parts by UID.
 4. **`modelv2.ldr` is authoritative.** The MCP reads from it when present (Studio v2 writes here and reads from here). `model.ldr` is also written for compatibility.

@@ -93,6 +93,7 @@ class TestOpenModel:
 
     def test_open_io_file(self, tmp_path):
         from brick_mcp.io_file import write_io_file
+
         io_path = str(tmp_path / "model.io")
         ldr_text = "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat\n"
         write_io_file(io_path, ldr_text, {})
@@ -128,6 +129,7 @@ class TestSaveModel:
 
     def test_save_io(self, tmp_path):
         from brick_mcp.io_file import read_io_file
+
         new_model("test")
         add_part(part_number="3001", color=4, x=0, y=0, z=0)
         io_path = str(tmp_path / "saved.io")
@@ -375,8 +377,8 @@ class TestListColors:
     def test_includes_common_colors(self):
         result = list_colors()
         codes = {c["code"] for c in result["data"]}
-        assert 0 in codes   # Black
-        assert 4 in codes   # Red
+        assert 0 in codes  # Black
+        assert 4 in codes  # Red
         assert 15 in codes  # White
 
 
@@ -393,3 +395,37 @@ class TestGetColorInfo:
         result = get_color_info(9999)
         assert result["ok"] is False
         assert result["error"]["code"] == "COLOR_NOT_FOUND"
+
+
+class TestAutoRender:
+    """Verify mutation tools include a PNG image when ldview is available."""
+
+    def test_add_part_returns_image_when_ldview_available(self, monkeypatch, tmp_path):
+        """When try_render produces an Image, mutation tools return [dict, Image]."""
+        from unittest.mock import patch
+
+        from fastmcp.utilities.types import Image
+
+        fake_image = Image(data=b"\x89PNG fake", format="png")
+
+        with patch("brick_mcp._helpers.try_render", return_value=fake_image):
+            new_model("t")
+            result = add_part("3001", 4, 0, 0, 0)
+
+        assert isinstance(result, list)
+        assert result[0]["ok"] is True
+        assert isinstance(result[1], Image)
+
+    def test_add_part_returns_dict_when_no_ldview(self):
+        """Without ldview, mutation tools return a plain dict (no image)."""
+        new_model("t")
+        result = add_part("3001", 4, 0, 0, 0)
+        assert isinstance(result, dict)
+        assert result["ok"] is True
+
+    def test_error_responses_never_include_image(self):
+        """Error responses are always plain dicts, never lists."""
+        set_model(None)
+        result = add_part("3001", 4, 0, 0, 0)
+        assert isinstance(result, dict)
+        assert result["ok"] is False

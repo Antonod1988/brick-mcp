@@ -28,7 +28,6 @@ from brick_mcp.ldraw import (
     to_v2_ldraw_text,
 )
 
-
 # ---------------------------------------------------------------------------
 # Module-level singleton
 # ---------------------------------------------------------------------------
@@ -39,9 +38,7 @@ _model: "StudioProject | None" = None
 def get_model() -> "StudioProject":
     """Return the active StudioProject. Raises RuntimeError if none is loaded."""
     if _model is None:
-        raise RuntimeError(
-            "No model loaded. Call new_model() or open_model() first."
-        )
+        raise RuntimeError("No model loaded. Call new_model() or open_model() first.")
     return _model
 
 
@@ -148,8 +145,10 @@ class StudioProject:
         if not submodel:
             return self.submodels[self.root_submodel]
         if submodel not in self.submodels:
-            raise KeyError(f"Submodel '{submodel}' not found. "
-                           f"Available: {list(self.submodels.keys())}")
+            raise KeyError(
+                f"Submodel '{submodel}' not found. "
+                f"Available: {list(self.submodels.keys())}"
+            )
         return self.submodels[submodel]
 
     # ------------------------------------------------------------------
@@ -221,9 +220,7 @@ class StudioProject:
         self._dirty = True
         return True
 
-    def change_color(
-        self, part_id: str, color: int, submodel: str | None
-    ) -> bool:
+    def change_color(self, part_id: str, color: int, submodel: str | None) -> bool:
         """Change a part's color. Returns True if found."""
         sd = self._submodel(submodel)
         cmd = sd._find_part(part_id)
@@ -345,7 +342,9 @@ class StudioProject:
         total_parts = sum(sd.part_count() for sd in self.submodels.values())
         return {
             "source_path": self.source_path,
-            "filename": os.path.basename(self.source_path) if self.source_path else None,
+            "filename": (
+                os.path.basename(self.source_path) if self.source_path else None
+            ),
             "root_submodel": self.root_submodel,
             "submodels": list(self.submodels.keys()),
             "total_part_count": total_parts,
@@ -358,16 +357,12 @@ class StudioProject:
 
     def to_ldraw_text(self) -> str:
         """Serialize the project to standard LDraw text (type-1 part lines)."""
-        blocks = [
-            (sd.name, sd.commands) for sd in self.submodels.values()
-        ]
+        blocks = [(sd.name, sd.commands) for sd in self.submodels.values()]
         return to_ldraw_text(blocks)
 
     def to_v2_ldraw_text(self) -> str:
         """Serialize the project in BrickLink Studio v2 format (type-11 part lines)."""
-        blocks = [
-            (sd.name, sd.commands) for sd in self.submodels.values()
-        ]
+        blocks = [(sd.name, sd.commands) for sd in self.submodels.values()]
         return to_v2_ldraw_text(blocks)
 
     def _part_as_dict(self, part_id: str, submodel: str | None) -> dict | None:

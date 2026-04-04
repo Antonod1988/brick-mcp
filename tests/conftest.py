@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from brick_mcp.model import StudioProject, set_model
@@ -14,3 +16,10 @@ def fresh_model():
     set_model(project)
     yield
     set_model(None)
+
+
+@pytest.fixture(autouse=True)
+def _no_ldview():
+    """Prevent try_render from finding ldview so mutation tools return plain dicts."""
+    with patch("brick_mcp._helpers.shutil.which", return_value=None):
+        yield

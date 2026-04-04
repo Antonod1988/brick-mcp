@@ -26,7 +26,8 @@ Standard side-by-side: multiples of 20 LDU on the X or Z axis.
 2. **Inspect** with `get_model_info()`, `list_parts()`, `get_bom()`, `get_steps()`.
 3. **Edit** with `add_part()`, `move_part()`, `rotate_part()`, `change_color()`, `remove_part()`.
 4. **Organise steps** with `add_step()` / `remove_step()` — STEP markers define building instruction steps.
-5. **Save** with `save_model(path)`. Omit path to save back to the original file.
+5. **Render** with `render_model()` to get a PNG snapshot of the current model.
+6. **Save** with `save_model(path)`. Omit path to save back to the original file.
    - `.io` path → BrickLink Studio archive (plain ZIP with modelv2.ldr)
    - `.ldr` path → plain LDraw text
 
@@ -35,6 +36,15 @@ Standard side-by-side: multiples of 20 LDU on the X or Z axis.
 Every part gets a session UUID (e.g. `"a3f9c12b8e04"`) when loaded or added.
 Use this ID with move_part, rotate_part, change_color, remove_part.
 **IDs reset when you reload a file** — re-call list_parts() after open_model().
+
+## Rendering
+
+- Every mutation tool (`add_part`, `remove_part`, `move_part`, `rotate_part`,
+  `change_color`, `add_step`, `remove_step`, `new_model`, `open_model`, `save_model`)
+  **automatically includes a PNG render** of the model in its response when `ldview`
+  is available on PATH.  You do not need to call `render_model()` after each edit.
+- `render_model(width, height, latitude, longitude)` — render on demand with custom
+  resolution and camera angle.  Default: two-thirds view (lat 30°, lon 45°).
 
 ## Finding Parts and Colors
 

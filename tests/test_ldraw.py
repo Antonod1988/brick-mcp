@@ -140,11 +140,7 @@ class TestParseMPD:
         assert len(blocks[1][1]) == 1
 
     def test_root_is_first_block(self):
-        text = (
-            "0 FILE root.ldr\n"
-            "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat\n"
-            "0 NOFILE\n"
-        )
+        text = "0 FILE root.ldr\n" "1 4 0 0 0 1 0 0 0 1 0 0 0 1 3001.dat\n" "0 NOFILE\n"
         blocks = parse_ldraw(text)
         assert blocks[0][0] == "root.ldr"
 

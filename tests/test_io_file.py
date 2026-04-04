@@ -71,7 +71,8 @@ class TestReadErrors:
 
         path = str(tmp_path / "no_model.io")
         with pyzipper.AESZipFile(
-            path, "w",
+            path,
+            "w",
             compression=pyzipper.ZIP_DEFLATED,
             encryption=pyzipper.WZ_AES,
         ) as zf:
