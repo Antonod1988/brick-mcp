@@ -12,7 +12,7 @@ from typing import Any
 
 from fastmcp.utilities.types import Image
 
-from brick_mcp._helpers import err, ok, ok_with_render
+from brick_mcp._helpers import err, ok, ok_with_render, try_render
 from brick_mcp.model import get_model
 from brick_mcp.server import mcp
 
@@ -89,7 +89,7 @@ def _strip_images(result: Any) -> dict:
 
 
 @mcp.tool
-def batch(calls: list[dict]) -> list | dict:
+def batch(calls: list[dict]) -> list | dict | Image:
     """Execute multiple tool calls in a single round-trip.
 
     Runs each call sequentially.  The state changes from each call (e.g. a part
@@ -188,9 +188,6 @@ def batch(calls: list[dict]) -> list | dict:
     # Append a single render if the model exists and ldview is available
     try:
         project = get_model()
-        img = None
-        from brick_mcp._helpers import try_render
-
         img = try_render(project)
     except RuntimeError:
         img = None

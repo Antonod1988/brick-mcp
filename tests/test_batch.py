@@ -330,7 +330,7 @@ class TestBatchAutoRender:
         from fastmcp.utilities.types import Image as FMCPImage
 
         fake_img = FMCPImage(data=b"\x89PNG", format="png")
-        with patch("brick_mcp._helpers.try_render", return_value=fake_img):
+        with patch("brick_mcp.tools.batch.try_render", return_value=fake_img):
             result = batch(calls=[{"tool": "new_model", "args": {"name": "t"}}])
         assert isinstance(result, list)
         assert result[0]["ok"] is True
