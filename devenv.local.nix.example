@@ -1,0 +1,18 @@
+{
+  profiles.devcontainer.module = {
+    devcontainer.enable = true;
+    devcontainer.tweaks = [
+      "gpg-agent"
+      "podman"
+      "vscode"
+    ];
+    devcontainer.settings.customizations.vscode.extensions = [
+      "anthropic.claude-code"
+      "datakurre.devenv"
+      "GitHub.copilot"
+      "GitHub.copilot-chat"
+      "jnoortheen.nix-ide"
+      "vscodevim.vim"
+    ];
+  };
+}

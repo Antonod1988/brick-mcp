@@ -1,0 +1,16 @@
+# Devenv
+.devenv*
+.devcontainer.json
+devenv.local.nix
+devenv.local.yaml
+result
+
+# pre-commit
+.pre-commit-config.yaml
+
+# python
+__pycache__/
+.coverage
+
+# agents
+.agents/
