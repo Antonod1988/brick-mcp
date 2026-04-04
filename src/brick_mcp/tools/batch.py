@@ -39,6 +39,7 @@ def _dispatch_table() -> dict[str, Any]:
     from brick_mcp.tools.parts import (
         get_color_info,
         get_part_details,
+        get_part_footprint,
         list_colors,
         search_parts,
     )
@@ -69,6 +70,7 @@ def _dispatch_table() -> dict[str, Any]:
         # Parts / colors
         "search_parts": search_parts,
         "get_part_details": get_part_details,
+        "get_part_footprint": get_part_footprint,
         "list_colors": list_colors,
         "get_color_info": get_color_info,
         # Render (explicit on-demand call; auto-render is handled at the end)

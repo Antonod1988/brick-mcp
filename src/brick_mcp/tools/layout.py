@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastmcp.utilities.types import Image
 
 from brick_mcp._helpers import err, ok, ok_with_render, placement_warnings
-from brick_mcp.catalog import aabbs_overlap, part_aabb
+from brick_mcp.catalog import aabbs_overlap, get_part_dims, part_aabb
 from brick_mcp.model import get_model
 from brick_mcp.server import mcp
 
@@ -139,13 +139,28 @@ def validate_placement(
                 }
             )
 
+    hx, y_full, hz = get_part_dims(pn)
+    footprint = {
+        "x_half": hx,
+        "z_half": hz,
+        "height": y_full,
+        "x_span": hx * 2,
+        "z_span": hz * 2,
+    }
+
     if conflicts:
         return ok(
-            {"valid": False, "conflict_count": len(conflicts), "conflicts": conflicts},
+            {
+                "valid": False,
+                "conflict_count": len(conflicts),
+                "conflicts": conflicts,
+                "footprint": footprint,
+            },
             f"Placement invalid: {len(conflicts)} conflict(s)",
         )
     return ok(
-        {"valid": True, "conflict_count": 0, "conflicts": []}, "Placement is valid"
+        {"valid": True, "conflict_count": 0, "conflicts": [], "footprint": footprint},
+        "Placement is valid",
     )
 
 

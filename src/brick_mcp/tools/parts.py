@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from brick_mcp._helpers import err, ok
-from brick_mcp.catalog import get_part_info, search_catalog
+from brick_mcp.catalog import get_part_dims, get_part_info, search_catalog
 from brick_mcp.colors import all_colors, get_color
 from brick_mcp.server import mcp
 
@@ -60,6 +60,65 @@ def list_colors() -> dict:
         [{"code": 4, "name": "Red", "hex": "#C91A09", "edge": "#333333"}, ...]
     """
     return ok(all_colors())
+
+
+@mcp.tool
+def get_part_footprint(part_number: str) -> dict:
+    """Return the bounding-box footprint for a part to aid collision-free placement.
+
+    Use this BEFORE computing brick positions to know exactly how much space each
+    part occupies.  The footprint is the axis-aligned bounding box (AABB) of the
+    part body in LDU.
+
+    Placement rule for side-by-side bricks:
+      center_distance_X = x_half_A + x_half_B
+      center_distance_Z = z_half_A + z_half_B
+
+    Args:
+        part_number: LDraw part number with or without ".dat" (e.g. "3001" or "3010.dat").
+
+    Returns:
+        {
+          "part_number": "3001.dat",
+          "name": "Brick 2 x 4",
+          "x_half": 40.0,   # half-width along X axis in LDU
+          "z_half": 20.0,   # half-depth along Z axis in LDU
+          "height": 24.0,   # full height along Y axis in LDU
+          "x_span": 80.0,   # total width  (= x_half * 2)
+          "z_span": 40.0,   # total depth  (= z_half * 2)
+          "placement_note": "Two of these placed side-by-side in X need"
+                            " center-to-center distance >= 80 LDU (40+40)."
+        }
+    """
+    pn = part_number.strip()
+    if not pn.lower().endswith(".dat"):
+        pn_dat = pn + ".dat"
+    else:
+        pn_dat = pn
+
+    x_half, height, z_half = get_part_dims(pn_dat)
+    info = get_part_info(pn_dat)
+    name = info["name"] if info else pn_dat
+
+    note = (
+        f"Two of these placed side-by-side in X need center-to-center distance"
+        f" >= {int(x_half * 2)} LDU ({int(x_half)}+{int(x_half)})."
+        f" Side-by-side in Z: >= {int(z_half * 2)} LDU ({int(z_half)}+{int(z_half)})."
+    )
+
+    return ok(
+        {
+            "part_number": pn_dat.lower(),
+            "name": name,
+            "x_half": x_half,
+            "z_half": z_half,
+            "height": height,
+            "x_span": x_half * 2,
+            "z_span": z_half * 2,
+            "placement_note": note,
+        },
+        f"{name}: x_span={int(x_half*2)} z_span={int(z_half*2)} height={int(height)} LDU",
+    )
 
 
 @mcp.tool
