@@ -21,5 +21,5 @@ def fresh_model():
 @pytest.fixture(autouse=True)
 def _no_ldview():
     """Prevent try_render from finding ldview so mutation tools return plain dicts."""
-    with patch("brick_mcp._helpers.shutil.which", return_value=None):
+    with patch("brick_mcp._helpers._find_ldview", return_value=None):
         yield

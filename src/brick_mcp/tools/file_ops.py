@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+from fastmcp.utilities.types import Image
+
 from brick_mcp import io_file, ldraw
 from brick_mcp._helpers import err, ok, ok_with_render
 from brick_mcp.model import StudioProject, get_model, set_model
@@ -11,7 +13,7 @@ from brick_mcp.server import mcp
 
 
 @mcp.tool
-def new_model(name: str = "model") -> dict:
+def new_model(name: str = "model") -> list | dict | Image:
     """Create a new, empty LEGO model in memory.
 
     Args:
@@ -29,7 +31,7 @@ def new_model(name: str = "model") -> dict:
 
 
 @mcp.tool
-def open_model(path: str) -> dict:
+def open_model(path: str) -> list | dict | Image:
     """Open a BrickLink Studio .io file or plain LDraw .ldr / .mpd file.
 
     Parses the file, assigns session UUIDs to all parts, and loads it as the
@@ -78,7 +80,7 @@ def open_model(path: str) -> dict:
 
 
 @mcp.tool
-def save_model(path: str = "") -> dict:
+def save_model(path: str = "") -> list | dict | Image:
     """Save the active model to disk.
 
     Args:

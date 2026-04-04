@@ -7,6 +7,7 @@ import pytest
 from brick_mcp.model import get_model, set_model
 from brick_mcp.tools.file_ops import get_model_info, new_model, open_model, save_model
 from brick_mcp.tools.inspection import get_bom, get_steps, list_parts
+from brick_mcp.tools.layout import check_overlaps, snap_to_grid, validate_placement
 from brick_mcp.tools.manipulation import (
     add_part,
     add_step,
@@ -16,7 +17,12 @@ from brick_mcp.tools.manipulation import (
     remove_step,
     rotate_part,
 )
-from brick_mcp.tools.parts import get_color_info, list_colors, search_parts
+from brick_mcp.tools.parts import (
+    get_color_info,
+    get_part_details,
+    list_colors,
+    search_parts,
+)
 
 
 class TestNewModel:
@@ -328,7 +334,7 @@ class TestAddRemoveStep:
 
 class TestSearchParts:
     def test_finds_by_name(self):
-        result = search_parts("brick 2 x 4")
+        result = search_parts("brick 2 x 4", limit=200)
         assert result["ok"] is True
         parts = result["data"]
         assert any(p["part_number"] == "3001.dat" for p in parts)
@@ -429,3 +435,162 @@ class TestAutoRender:
         result = add_part("3001", 4, 0, 0, 0)
         assert isinstance(result, dict)
         assert result["ok"] is False
+
+
+# =============================================================================
+# Catalog and Layout tools
+# =============================================================================
+
+
+class TestSearchPartsWithCatalog:
+    def test_returns_category_field(self):
+        result = search_parts("brick 2x4")
+        assert result["ok"] is True
+        assert len(result["data"]) > 0
+        first = result["data"][0]
+        assert "category" in first
+
+    def test_2x4_shorthand_matches(self):
+        result = search_parts("2x4", limit=50)
+        assert result["ok"] is True
+        assert len(result["data"]) > 0
+
+    def test_limit_respected(self):
+        result = search_parts("brick", limit=5)
+        assert result["ok"] is True
+        assert len(result["data"]) <= 5
+
+    def test_no_match_returns_empty_list(self):
+        result = search_parts("xyzzy_no_match_ever_12345")
+        assert result["ok"] is True
+        assert result["data"] == []
+
+
+class TestGetPartDetails:
+    def test_known_part_without_extension(self):
+        result = get_part_details("3001")
+        assert result["ok"] is True
+        data = result["data"]
+        assert data["part_number"] == "3001.dat"
+        assert "Brick" in data["name"]
+        assert "category" in data
+
+    def test_known_part_with_extension(self):
+        result = get_part_details("3001.dat")
+        assert result["ok"] is True
+
+    def test_unknown_part_returns_error(self):
+        result = get_part_details("99999xyz")
+        assert result["ok"] is False
+        assert result["error"]["code"] == "PART_NOT_FOUND"
+
+
+class TestCheckOverlaps:
+    def test_no_model_returns_error(self):
+        set_model(None)
+        result = check_overlaps()
+        assert result["ok"] is False
+        assert result["error"]["code"] == "NO_MODEL"
+
+    def test_empty_model_no_overlaps(self):
+        new_model("test_overlaps")
+        result = check_overlaps()
+        assert result["ok"] is True
+        assert result["data"]["overlap_count"] == 0
+
+    def test_two_bricks_same_position_overlap(self):
+        new_model("test_overlaps")
+        add_part("3001", 4, 0, 0, 0)
+        add_part("3001", 4, 0, 0, 0)  # exactly the same position
+        result = check_overlaps()
+        assert result["ok"] is True
+        assert result["data"]["overlap_count"] >= 1
+
+    def test_two_bricks_stacked_no_overlap(self):
+        """Brick on top of another (y=-24) should NOT be reported as overlapping."""
+        new_model("test_stack")
+        add_part("3001", 4, 0, 0, 0)
+        add_part("3001", 4, 0, -24, 0)
+        result = check_overlaps()
+        assert result["ok"] is True
+        assert result["data"]["overlap_count"] == 0
+
+
+class TestValidatePlacement:
+    def test_no_model_returns_error(self):
+        set_model(None)
+        result = validate_placement("3001", 0, 0, 0)
+        assert result["ok"] is False
+        assert result["error"]["code"] == "NO_MODEL"
+
+    def test_empty_model_valid(self):
+        new_model("test_validate")
+        result = validate_placement("3001", 0, 0, 0)
+        assert result["ok"] is True
+        assert result["data"]["valid"] is True
+        assert result["data"]["conflict_count"] == 0
+
+    def test_conflict_with_existing_part(self):
+        new_model("test_validate")
+        add_part("3001", 4, 0, 0, 0)
+        # Try to place at exactly the same spot
+        result = validate_placement("3001", 0, 0, 0)
+        assert result["ok"] is True
+        assert result["data"]["valid"] is False
+        assert result["data"]["conflict_count"] >= 1
+
+    def test_adjacent_position_valid(self):
+        new_model("test_validate")
+        add_part("3001", 4, 0, 0, 0)
+        # 3001 is 2x4 studs = 40x80 LDU; placing at x=100 (well clear) should be fine
+        result = validate_placement("3001", 100, 0, 0)
+        assert result["ok"] is True
+        assert result["data"]["valid"] is True
+
+    def test_invalid_rotation_matrix(self):
+        new_model("test_validate")
+        result = validate_placement("3001", 0, 0, 0, rotation_matrix=[1, 0, 0])
+        assert result["ok"] is False
+        assert result["error"]["code"] == "INVALID_MATRIX"
+
+
+class TestSnapToGrid:
+    def test_no_model_returns_error(self):
+        set_model(None)
+        result = snap_to_grid("some-id")
+        assert result["ok"] is False
+        assert result["error"]["code"] == "NO_MODEL"
+
+    def test_unknown_part_returns_error(self):
+        new_model("test_snap")
+        result = snap_to_grid("nonexistent-part-id")
+        assert result["ok"] is False
+        assert result["error"]["code"] == "PART_NOT_FOUND"
+
+    def test_already_on_grid(self):
+        new_model("test_snap")
+        result_add = add_part("3001", 4, 0, 0, 0)
+        part_id = (result_add if isinstance(result_add, dict) else result_add[0])[
+            "data"
+        ]["id"]
+        result = snap_to_grid(part_id)
+        assert result["ok"] is True
+        delta = (result if isinstance(result, dict) else result[0])["data"]["delta"]
+        assert delta["dx"] == 0
+        assert delta["dy"] == 0
+        assert delta["dz"] == 0
+
+    def test_snaps_to_nearest_grid(self):
+        new_model("test_snap")
+        # Move to an off-grid position before snapping
+        result_add = add_part("3001", 4, 0, 0, 0)
+        part_id = (result_add if isinstance(result_add, dict) else result_add[0])[
+            "data"
+        ]["id"]
+        move_part(part_id, 7, 3, 11)  # off-grid: should snap to 0, 0, 20
+        result = snap_to_grid(part_id)
+        assert result["ok"] is True
+        data = (result if isinstance(result, dict) else result[0])["data"]
+        assert data["x"] == 0  # nearest multiple of 20 from 7
+        assert data["y"] == 0  # nearest multiple of 8 from 3
+        assert data["z"] == 20  # nearest multiple of 20 from 11

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import tempfile
 
 from fastmcp.utilities.types import Image
 
-from brick_mcp._helpers import err
+from brick_mcp._helpers import _egl_env, _find_ldview, err
 from brick_mcp.model import get_model as _get_model
 from brick_mcp.server import mcp
 
@@ -24,7 +23,7 @@ def render_model(
     """Render the current model to a PNG image.
 
     Returns a PNG snapshot of the model from the given camera angle.
-    Requires `ldview` on PATH (provided by the Nix package).
+    Requires `ldview` on PATH or in the Nix store.
 
     Args:
         width:     Image width in pixels.
@@ -37,10 +36,10 @@ def render_model(
     except RuntimeError as exc:
         return err(str(exc), "NO_MODEL")
 
-    ldview_bin = shutil.which("ldview")
+    ldview_bin = _find_ldview()
     if ldview_bin is None:
         return err(
-            "ldview binary not found on PATH. Install the ldview Nix package.",
+            "ldview binary not found on PATH or in the Nix store. Install the ldview Nix package.",
             "LDVIEW_NOT_FOUND",
         )
 
@@ -69,11 +68,13 @@ def render_model(
             "-SaveAlpha=0",
         ]
 
+        env = {**os.environ, **_egl_env()}
         try:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 timeout=120,
+                env=env,
             )
         except FileNotFoundError:
             return err("ldview binary not found.", "LDVIEW_NOT_FOUND")

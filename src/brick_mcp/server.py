@@ -24,33 +24,53 @@ Standard side-by-side: multiples of 20 LDU on the X or Z axis.
 
 1. **Start a session** with `new_model(name)` or `open_model(path)`.
 2. **Inspect** with `get_model_info()`, `list_parts()`, `get_bom()`, `get_steps()`.
-3. **Edit** with `add_part()`, `move_part()`, `rotate_part()`, `change_color()`, `remove_part()`.
-4. **Organise steps** with `add_step()` / `remove_step()` — STEP markers define building instruction steps.
-5. **Render** with `render_model()` to get a PNG snapshot of the current model.
-6. **Save** with `save_model(path)`. Omit path to save back to the original file.
+3. **Plan placements** with `validate_placement()` before `add_part()` to avoid overlaps.
+4. **Edit** with `add_part()`, `move_part()`, `rotate_part()`, `change_color()`, `remove_part()`.
+5. **Fix alignment** with `snap_to_grid()` after free-form moves.
+6. **Verify** with `check_overlaps()` to detect any collisions in the current model.
+7. **Organise steps** with `add_step()` / `remove_step()` — STEP markers define building instruction steps.
+8. **Render** with `render_model()` to get a PNG snapshot of the current model.
+9. **Save** with `save_model(path)`. Omit path to save back to the original file.
    - `.io` path → BrickLink Studio archive (plain ZIP with modelv2.ldr)
    - `.ldr` path → plain LDraw text
 
 ## Part IDs
 
 Every part gets a session UUID (e.g. `"a3f9c12b8e04"`) when loaded or added.
-Use this ID with move_part, rotate_part, change_color, remove_part.
+Use this ID with move_part, rotate_part, change_color, remove_part, snap_to_grid.
 **IDs reset when you reload a file** — re-call list_parts() after open_model().
 
 ## Rendering
 
 - Every mutation tool (`add_part`, `remove_part`, `move_part`, `rotate_part`,
-  `change_color`, `add_step`, `remove_step`, `new_model`, `open_model`, `save_model`)
-  **automatically includes a PNG render** of the model in its response when `ldview`
-  is available on PATH.  You do not need to call `render_model()` after each edit.
+  `change_color`, `snap_to_grid`, `add_step`, `remove_step`, `new_model`, `open_model`,
+  `save_model`) **automatically includes a PNG render** of the model in its response
+  when `ldview` is available.  You do not need to call `render_model()` after each edit.
 - `render_model(width, height, latitude, longitude)` — render on demand with custom
   resolution and camera angle.  Default: two-thirds view (lat 30°, lon 45°).
 
 ## Finding Parts and Colors
 
-- `search_parts(query)` — find part numbers by name or number (e.g. "brick 2x4", "3001")
-- `list_colors()` — all LDraw color codes with names and hex values
-- `get_color_info(color_code)` — details for a specific color code
+- `search_parts(query, limit)` — search ~20 000 LDraw parts by name or number.
+  Returns `{"part_number": ..., "name": ..., "category": ...}` for each match.
+  Examples: "brick 2x4", "slope 45", "tile 1x2", "3001".
+- `get_part_details(part_number)` — full catalog entry for a single part.
+- `list_colors()` — all LDraw color codes with names and hex values.
+- `get_color_info(color_code)` — details for a specific color code.
+
+## Avoiding Overlaps
+
+Before placing parts, always compute grid-aligned positions using the LDU rules above.
+Use the collision-detection tools to verify your layout:
+
+- `validate_placement(part_number, x, y, z, rotation_matrix)` — check a proposed
+  placement against all existing parts **before** calling add_part().  Returns
+  `{"valid": true, ...}` or `{"valid": false, "conflicts": [...]}`.
+- `check_overlaps()` — scan the whole model and report every overlapping pair.
+- `snap_to_grid(part_id)` — round X/Z to nearest 20 LDU and Y to nearest 8 LDU.
+
+Collision detection uses conservative axis-aligned bounding boxes (AABB).  Two parts
+whose surfaces merely touch (≤ 0.5 LDU penetration) are not counted as overlapping.
 
 ## Rotation Matrices
 

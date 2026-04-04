@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from fastmcp.utilities.types import Image
+
 from brick_mcp._helpers import err, ok, ok_with_render
 from brick_mcp.model import get_model
 from brick_mcp.server import mcp
@@ -16,7 +18,7 @@ def add_part(
     z: float = 0.0,
     rotation_matrix: list[float] | None = None,
     submodel: str = "",
-) -> dict:
+) -> list | dict | Image:
     """Add a part to the model.
 
     Args:
@@ -55,7 +57,7 @@ def add_part(
 
 
 @mcp.tool
-def remove_part(part_id: str, submodel: str = "") -> dict:
+def remove_part(part_id: str, submodel: str = "") -> list | dict | Image:
     """Remove a part from the model by its session UUID.
 
     Args:
@@ -87,7 +89,7 @@ def move_part(
     y: float,
     z: float,
     submodel: str = "",
-) -> dict:
+) -> list | dict | Image:
     """Move a part to new absolute coordinates.
 
     Args:
@@ -121,7 +123,7 @@ def rotate_part(
     part_id: str,
     rotation_matrix: list[float],
     submodel: str = "",
-) -> dict:
+) -> list | dict | Image:
     """Change a part's rotation.
 
     Args:
@@ -157,7 +159,7 @@ def rotate_part(
 
 
 @mcp.tool
-def change_color(part_id: str, color: int, submodel: str = "") -> dict:
+def change_color(part_id: str, color: int, submodel: str = "") -> list | dict | Image:
     """Change a part's color.
 
     Args:
@@ -185,7 +187,7 @@ def change_color(part_id: str, color: int, submodel: str = "") -> dict:
 
 
 @mcp.tool
-def add_step(submodel: str = "") -> dict:
+def add_step(submodel: str = "") -> list | dict | Image:
     """Append a STEP marker at the end of the current submodel.
 
     STEP markers define building instruction steps. Parts before a STEP belong
@@ -211,7 +213,7 @@ def add_step(submodel: str = "") -> dict:
 
 
 @mcp.tool
-def remove_step(step_index: int, submodel: str = "") -> dict:
+def remove_step(step_index: int, submodel: str = "") -> list | dict | Image:
     """Remove a STEP boundary by its 0-based index.
 
     Parts from the removed step merge into the previous step.

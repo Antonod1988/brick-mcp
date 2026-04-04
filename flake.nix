@@ -45,39 +45,33 @@
                 pyproject-build-systems.overlays.default
                 (workspace.mkPyprojectOverlay { sourcePreference = "wheel"; })
                 (import ./overrides.nix)
-                (final: prev: {
-                  # Ensure all Python packages in the dependency graph see the same
-                  # Python interpreter and standard library.  This is important for
-                  # binary packages that link against Python (e.g. cairocffi).
-                  "${pyprojectName}"= prev."${pyprojectName}".overrideAttrs (old: {
-                    propagatedBuildInputs = [ ldview ] ++ (old.propagatedBuildInputs or []);
-                  });
-                })
               ]
             );
         inherit (pkgs.callPackages inputs.pyproject-nix.build.util { }) mkApplication;
         ldview = pkgs.callPackage ./pkgs/ldview.nix { };
-        basePackage = mkApplication {
+        package  = mkApplication {
           venv = pythonSet.mkVirtualEnv "${pyprojectName}-env" workspace.deps.default;
           package = pythonSet.${pyprojectName};
         };
-        # Wrap the MCP binary so ldview is on PATH at runtime.
-        package = pkgs.symlinkJoin {
-          name = pyprojectName;
-          paths = [
-            basePackage
-            ldview
-          ];
+        package-with-ldview = pkgs.stdenv.mkDerivation {
+          name = "${pyprojectName}";
+          buildInputs = [ pkgs.makeWrapper ];
+          src = package;
+          installPhase = ''
+            mkdir -p $out/bin
+            makeWrapper ${package}/bin/${pyprojectName} $out/bin/${pyprojectName} \
+              --prefix PATH : ${ldview}/bin
+          '';
         };
       in
       {
         apps.default = {
           type = "app";
-          program = "${package}/bin/${pyprojectName}";
+          program = "${package-with-ldview}/bin/${pyprojectName}";
         };
 
         packages = {
-          default = package;
+          default = package-with-ldview;
           inherit ldview;
         };
 
