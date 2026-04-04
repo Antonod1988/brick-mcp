@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastmcp.utilities.types import Image
 
-from brick_mcp._helpers import err, ok, ok_with_render
+from brick_mcp._helpers import err, ok, ok_with_render, placement_warnings
 from brick_mcp.catalog import aabbs_overlap, part_aabb
 from brick_mcp.model import get_model
 from brick_mcp.server import mcp
@@ -194,8 +194,12 @@ def snap_to_grid(part_id: str, submodel: str = "") -> list | dict | Image:
 
     project.move_part(part_id, new_x, new_y, new_z, submodel or None)
     part_dict = project._part_as_dict(part_id, submodel or None)
+    conflicts = placement_warnings(project, part_id, submodel or None)
+    snapped = {**part_dict, "delta": delta}
+    if conflicts:
+        snapped["overlap_warnings"] = conflicts
     return ok_with_render(
         project,
-        {**part_dict, "delta": delta},
+        snapped,
         f"Snapped ({old_x},{old_y},{old_z}) -> ({new_x},{new_y},{new_z})",
     )

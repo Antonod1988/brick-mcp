@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastmcp.utilities.types import Image
 
-from brick_mcp._helpers import err, ok, ok_with_render
+from brick_mcp._helpers import err, ok, ok_with_render, placement_warnings
 from brick_mcp.model import get_model
 from brick_mcp.server import mcp
 
@@ -53,6 +53,9 @@ def add_part(
         return err(str(e), "INVALID_VALUE")
 
     part_dict = project._part_as_dict(pid, submodel or None)
+    conflicts = placement_warnings(project, pid, submodel or None)
+    if conflicts:
+        part_dict = {**part_dict, "overlap_warnings": conflicts}
     return ok_with_render(project, part_dict, f"Added {part_number} (id={pid})")
 
 
@@ -115,6 +118,9 @@ def move_part(
     if not moved:
         return err(f"Part '{part_id}' not found", "PART_NOT_FOUND")
     part_dict = project._part_as_dict(part_id, submodel or None)
+    conflicts = placement_warnings(project, part_id, submodel or None)
+    if conflicts:
+        part_dict = {**part_dict, "overlap_warnings": conflicts}
     return ok_with_render(project, part_dict)
 
 
@@ -155,6 +161,9 @@ def rotate_part(
     if not rotated:
         return err(f"Part '{part_id}' not found", "PART_NOT_FOUND")
     part_dict = project._part_as_dict(part_id, submodel or None)
+    conflicts = placement_warnings(project, part_id, submodel or None)
+    if conflicts:
+        part_dict = {**part_dict, "overlap_warnings": conflicts}
     return ok_with_render(project, part_dict)
 
 

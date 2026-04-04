@@ -125,3 +125,47 @@ def ok_with_render(project: Any, data: Any = None, message: str = "") -> list | 
     if img is not None:
         return [result, img]
     return result
+
+
+def placement_warnings(project: Any, part_id: str, submodel: Any) -> list[dict]:
+    """Return a list of parts that overlap with the given part after placement.
+
+    Uses the same AABB logic as check_overlaps / validate_placement.
+    Returns an empty list when there are no conflicts or on any error
+    (warnings must never block an operation).
+    """
+    try:
+        from brick_mcp.catalog import aabbs_overlap, part_aabb
+
+        parts = project.list_parts(submodel)
+        target = next((p for p in parts if p["id"] == part_id), None)
+        if target is None:
+            return []
+
+        target_bb = part_aabb(
+            target["x"],
+            target["y"],
+            target["z"],
+            target["rotation"],
+            target["part_number"],
+        )
+        conflicts = []
+        for p in parts:
+            if p["id"] == part_id:
+                continue
+            other_bb = part_aabb(
+                p["x"], p["y"], p["z"], p["rotation"], p["part_number"]
+            )
+            if aabbs_overlap(target_bb, other_bb):
+                conflicts.append(
+                    {
+                        "id": p["id"],
+                        "part_number": p["part_number"],
+                        "x": p["x"],
+                        "y": p["y"],
+                        "z": p["z"],
+                    }
+                )
+        return conflicts
+    except Exception:
+        return []
