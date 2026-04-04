@@ -1,6 +1,6 @@
 {
   "servers": {
-    "brick": {
+    "bricks": {
       "type": "stdio",
       "command": "nix",
       "args": ["run", "/workspaces/brick-mcp"]

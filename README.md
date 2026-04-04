@@ -30,7 +30,7 @@ The repository ships a ready-to-use `.vscode/mcp.json` using Nix:
 ```json
 {
   "servers": {
-    "brick": {
+    "bricks": {
       "type": "stdio",
       "command": "nix",
       "args": ["run", "/path/to/brick-mcp"]
@@ -46,7 +46,7 @@ Replace `/path/to/brick-mcp` with the path to your local clone, or use `github:d
 ```json
 {
   "mcpServers": {
-    "brick": {
+    "bricks": {
       "command": "nix",
       "args": ["run", "github:datakurre/brick-mcp"]
     }
@@ -59,7 +59,7 @@ Replace `/path/to/brick-mcp` with the path to your local clone, or use `github:d
 ```json
 {
   "mcpServers": {
-    "brick": {
+    "bricks": {
       "command": "python",
       "args": ["/path/to/brick-mcp/main.py"]
     }
