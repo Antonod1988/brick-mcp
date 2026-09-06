@@ -16,8 +16,11 @@ A fallback hard-coded table of ~100 common parts is used when the zip is absent.
 from __future__ import annotations
 
 import glob
+import json
+import os
 import re
 import zipfile
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Fallback parts table (used when complete.zip is unavailable)
@@ -244,6 +247,32 @@ def _load_from_zip(zip_path: str) -> dict[str, dict[str, str]]:
     return result
 
 
+def _load_from_directory(library_path: str) -> dict[str, dict[str, str]]:
+    """Read the installed Studio/LDraw parts directory without copying its files."""
+    parts_dir = Path(library_path) / "parts"
+    if not parts_dir.is_dir():
+        raise FileNotFoundError(f"LDraw parts directory not found: {parts_dir}")
+    result = {}
+    for path in sorted(parts_dir.glob("*.dat")):
+        with path.open(encoding="utf-8-sig", errors="replace") as fh:
+            first_line = fh.readline().strip()
+            if not first_line.startswith("0 "):
+                continue
+            name = first_line[2:].strip()
+            category = _guess_category(name)
+            for _ in range(20):
+                line = fh.readline().strip()
+                if line.startswith("0 !CATEGORY "):
+                    category = line[12:].strip()
+                    break
+        result[path.name.lower()] = {
+            "part_number": path.name.lower(),
+            "name": name,
+            "category": category,
+        }
+    return result
+
+
 def get_catalog() -> dict[str, dict[str, str]]:
     """Return the full parts catalog, loading lazily on first call.
 
@@ -252,6 +281,16 @@ def get_catalog() -> dict[str, dict[str, str]]:
     """
     global _catalog
     if _catalog is None:
+        catalog_path = os.environ.get("LDRAW_CATALOG_PATH")
+        if catalog_path:
+            # ponytail: explicit catalog snapshot; rebuild after Studio/library updates.
+            with open(catalog_path, encoding="utf-8") as fh:
+                _catalog = json.load(fh)
+            return _catalog
+        library_path = os.environ.get("LDRAW_LIBRARY_PATH")
+        if library_path:
+            _catalog = _load_from_directory(library_path)
+            return _catalog
         zip_path = _locate_complete_zip()
         if zip_path:
             _catalog = _load_from_zip(zip_path)
