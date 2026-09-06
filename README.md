@@ -1,6 +1,14 @@
 # brick-mcp
 
-Local 0.2 instruction-workflow edition. See [LOCAL_SETUP.md](LOCAL_SETUP.md) for Windows setup, commands, verification and current limits.
+Personal 0.3 edition based on [datakurre/brick-mcp](https://github.com/datakurre/brick-mcp), with the upstream Git history preserved. This is an independent extension, not an official BrickLink Studio integration.
+
+Our additions include atomic construction steps with rollback, subassemblies and illustrated instructions, geometry-based part dimensions, and a native Windows bridge that runs Studio Stability and Connectivity checks on each committed step without Computer Use. See [LOCAL_SETUP.md](LOCAL_SETUP.md) for setup and [native_bridge/README.md](native_bridge/README.md) for the native worker.
+
+The native worker requires a separately installed Studio. Runtime binaries, local caches, generated models and rendered media are excluded from this repository. Fabric sails without physics data remain explicitly unverified; see [UPGRADE_RESULT.md](UPGRADE_RESULT.md) for verification history and limitations.
+
+The repository also preserves the cottage, pirate ship and Orc Kraken build scripts. `make_orc_presentation.py`, `presentation_blender.py` and `finish_orc_presentation.py` export the ship geometry, render stills/assembly stages and package the videos. These are workstation-specific examples: review their local paths and provide the generated model, Blender and FFmpeg before running them.
+
+Verification of this snapshot: **235 tests passed** (`python -m pytest tests/ -q`, 2026-09-06). Native engine integration checks are separate from this unit suite.
 
 An [MCP](https://modelcontextprotocol.io/) server that lets AI assistants create, inspect, and edit LEGO models stored in BrickLink Studio (`.io`) and LDraw (`.ldr`) files. Ask your AI assistant to open a file, move parts around, change colors, add new bricks — then save back to a file that opens directly in BrickLink Studio.
 
