@@ -10,13 +10,28 @@ Primary reference for AI coding agents (Copilot, Claude, etc.) working inside th
 
 ---
 
-## Local 0.2 instruction workflow
+## Local 0.3 instruction workflow
 
 - `geometry.py` is shared by bounds, connections and rendering. Do not restore the
   removed hard-coded dimensions table. Unsupported geometry must remain explicit.
 - `instructions.py` reads/writes native STUDIOSTEPDESC descriptions and step groups.
 - `validation.py` covers ordinary upright studs/receivers and insertion from above;
   it does not prove physical strength or support arbitrary clips/pins/hinges.
+- `native_studio.py` drives a dedicated Studio worker through local request files.
+  `apply_step` runs native Stability and Connectivity before committing, including
+  later prefixes and affected parent assemblies; `edit_step` does likewise.
+  Use `inspect_studio_connectors` for actual pin/bar/axle coordinates. No Computer
+  Use is involved. Do not replace the native result with an AABB approximation.
+- Native red warnings, disconnected sections, instability and transport failures
+  roll back. `allow_cautions=True` explicitly accepts soft cautions, retaining them.
+  `allow_unverified_canvas=True` is display-only: full and rigid-subset checks run,
+  missing-physics sails remain `unverified_canvas`, and release export stays blocked.
+- `apply_step(replace_existing=True, insert_at=i)` atomically replaces one step.
+  Native reports are bound to each prefix's content; unverified/stale prefixes
+  prevent non-draft instruction export. Legacy add_part/batch are candidate edits.
+- The bridge source/build/setup are in `native_bridge/`; installed runtime files
+  live in ignored `.cache/studio-worker`. Its profile is separate from user Studio.
+  `native_bridge/probe.py` exercises the real engine; unit tests stub transport.
 - `tools/workflow.py` exposes apply_step, edit_step, create_submodel, undo_last_edit,
   validate_build, render_step and export_instructions. Compound edits snapshot
   memory; error/preview/save failure restores it. Files are replaced atomically.

@@ -16,6 +16,12 @@ from brick_mcp.ldraw import PartLine
 from brick_mcp.model import _SubmodelData, get_model
 from brick_mcp.server import mcp
 from brick_mcp.validation import validate_project, validate_sequence, summary
+from brick_mcp.tools.studio_check import (
+    studio_result,
+    check_and_record,
+    accepted_native,
+    affected_parent_steps,
+)
 
 
 def _accepted(report, allow_unverified):
@@ -42,6 +48,9 @@ def apply_step(
     allow_unverified: bool = False,
     preview: bool = True,
     save_path: str = "",
+    allow_cautions: bool = False,
+    replace_existing: bool = False,
+    allow_unverified_canvas: bool = False,
 ) -> list | dict:
     """Add ONE named construction step; validate, preview, save, or roll everything back.
 
@@ -51,8 +60,16 @@ def apply_step(
     insertion from above are checked. Unsupported connectors require explicit
     allow_unverified=True and remain labelled unverified. A render/save failure
     also rolls back. Returns state and highlighted PNGs when preview=True.
+    Native Studio runs automatically. allow_cautions opts into native pink
+    cautions only; their details remain in the report. Red warnings, instability,
+    detached sections, or transport errors cannot be bypassed.
+    replace_existing=True replaces the parts/name at explicit insert_at atomically,
+    retaining other parts' IDs and rechecking later steps and parent assemblies.
+    allow_unverified_canvas permits display-only fabric sails with missing Studio
+    physics: BOTH the full model and the rigid subset are tested. The full result
+    stays unverified_canvas and cannot be exported as a non-draft instruction.
     """
-    project, before = None, None
+    project, before, native = None, None, None
     try:
         project = get_model()
         before = project.snapshot()
@@ -70,7 +87,20 @@ def apply_step(
         index = len(steps) if insert_at == -1 else insert_at
         if not 0 <= index <= len(steps):
             raise ValueError("Step index out of range")
-        if index < len(steps) and not any(
+        retained = []
+        if replace_existing:
+            if insert_at == -1 or index >= len(steps):
+                raise ValueError(
+                    "Replacement requires an existing explicit insert_at index"
+                )
+            previous_step = steps.pop(index)
+            retained = [
+                c for c in previous_step["commands"] if not isinstance(c, PartLine)
+            ]
+            for c in previous_step["commands"]:
+                if isinstance(c, PartLine):
+                    project.remove_part(c._id, submodel or None)
+        elif index < len(steps) and not any(
             isinstance(c, PartLine) for c in steps[index]["commands"]
         ):
             steps.pop(index)  # Fill an explicitly inserted empty step.
@@ -110,7 +140,7 @@ def apply_step(
         added = [
             c for c in sd.commands if isinstance(c, PartLine) and c._id not in old_ids
         ]
-        steps.insert(index, {"name": name, "commands": added})
+        steps.insert(index, {"name": name, "commands": retained + added})
         write_groups(sd, steps)
         reports = validate_sequence(project, submodel)
         bad = [r for r in reports if not _accepted(r, allow_unverified)]
@@ -120,6 +150,39 @@ def apply_step(
             result["validation"] = bad
             result["rolled_back"] = True
             return result
+        for changed_step in reports:
+            if changed_step["step_index"] < index:
+                continue
+            native = check_and_record(
+                project,
+                submodel,
+                changed_step["step_index"],
+                allow_cautions,
+                allow_unverified_canvas,
+            )
+            if not accepted_native(native):
+                raise ValueError(
+                    "Native Studio found stability/connectivity issues; step rolled back"
+                )
+        for parent, first in affected_parent_steps(project, submodel):
+            for report in validate_sequence(project, parent):
+                if report["step_index"] < first:
+                    continue
+                if not _accepted(report, allow_unverified):
+                    raise ValueError(
+                        f"Parent assembly geometry rejected step: {parent} / {report['name']}"
+                    )
+                native = check_and_record(
+                    project,
+                    parent,
+                    report["step_index"],
+                    allow_cautions,
+                    allow_unverified_canvas,
+                )
+                if not accepted_native(native):
+                    raise ValueError(
+                        "Native Studio rejected an affected parent assembly; step rolled back"
+                    )
         images = _images(project, submodel, index) if preview else []
         if save_path:
             from brick_mcp.tools.file_ops import save_model
@@ -135,6 +198,7 @@ def apply_step(
             "validation": summary(next(r for r in reports if r["step_index"] == index)),
             "preview_paths": [str(p) for p in images],
             "saved_path": save_path or None,
+            "studio_check": native,
         }
         result = ok(data, f"Committed step {index + 1}: {name}")
         return [result, *[Image(path=str(p)) for p in images]] if images else result
@@ -143,6 +207,8 @@ def apply_step(
             project.restore(before)
         result = err(str(exc), "STEP_FAILED")
         result["rolled_back"] = before is not None
+        if native is not None:
+            result["studio_check"] = native
         return result
 
 
@@ -155,6 +221,8 @@ def edit_step(
     target_index: int | None = None,
     part_ids: list[str] | None = None,
     allow_unverified: bool = False,
+    allow_cautions: bool = False,
+    allow_unverified_canvas: bool = False,
 ) -> dict:
     """Edit steps transactionally. Actions: insert, rename, reorder, split,
     move_parts, merge_next, delete_empty. Indexes are zero-based. Split takes
@@ -179,12 +247,79 @@ def edit_step(
                 "validation": reports,
                 "rolled_back": True,
             }
+        for report in reports:
+            if accepted_native(studio_result(project, submodel, report["step_index"])):
+                continue
+            native = check_and_record(
+                project,
+                submodel,
+                report["step_index"],
+                allow_cautions,
+                allow_unverified_canvas,
+            )
+            if not accepted_native(native):
+                project.restore(before)
+                return {
+                    **err(
+                        "Native Studio rejected edited sequence",
+                        "NATIVE_STUDIO_CHECK_FAILED",
+                    ),
+                    "studio_check": native,
+                    "rolled_back": True,
+                }
+        for parent, first in affected_parent_steps(project, submodel):
+            for report in validate_sequence(project, parent):
+                if report["step_index"] < first:
+                    continue
+                if not _accepted(report, allow_unverified):
+                    raise ValueError(
+                        f"Parent assembly geometry rejected edit: {parent} / {report['name']}"
+                    )
+                native = check_and_record(
+                    project,
+                    parent,
+                    report["step_index"],
+                    allow_cautions,
+                    allow_unverified_canvas,
+                )
+                if not accepted_native(native):
+                    project.restore(before)
+                    return {
+                        **err(
+                            "Native Studio rejected edited parent assembly",
+                            "NATIVE_STUDIO_CHECK_FAILED",
+                        ),
+                        "studio_check": native,
+                        "rolled_back": True,
+                    }
         project.remember(before)
         return ok({"steps": result, "validation": [summary(r) for r in reports]})
     except Exception as exc:
         if before is not None:
             project.restore(before)
         return err(str(exc), "EDIT_STEP_FAILED")
+
+
+@mcp.tool
+def remove_unused_submodel(name: str) -> dict:
+    """Remove an unreferenced prototype only. Used assemblies and root are protected."""
+    try:
+        project = get_model()
+        if name == project.root_submodel or name not in project.submodels:
+            raise ValueError("Choose an existing non-root prototype")
+        if any(
+            p["part_number"] == name
+            for parent in project.submodels
+            for p in project.list_parts(parent)
+        ):
+            raise ValueError("Cannot remove an assembly that is still referenced")
+        before = project.snapshot()
+        del project.submodels[name]
+        project._dirty = True
+        project.remember(before)
+        return ok(project.info())
+    except Exception as exc:
+        return err(str(exc), "SUBMODEL_REMOVE_FAILED")
 
 
 @mcp.tool
@@ -288,6 +423,8 @@ def validate_build(
         return ok(
             {
                 "status": status,
+                "studio_check": studio_result(project),
+                "scope": "MCP geometry/connectivity checks; status is NOT physical stability",
                 "steps": reports if details else [summary(r) for r in reports],
             }
         )
@@ -320,12 +457,17 @@ def render_step(
 
 @mcp.tool
 def export_instructions(
-    directory: str, previews: bool = True, allow_unverified: bool = False
+    directory: str,
+    previews: bool = True,
+    allow_unverified: bool = False,
+    draft: bool = False,
 ) -> dict:
     """Export native Studio IO, MPD, step/BOM manifest and an illustrated HTML booklet.
 
     Includes each subassembly's own steps and native STUDIOSTEPDESC names. Does
     not control or refresh Studio. The destination must be new or empty.
+    A current clear Studio check is required unless draft=True. Draft exports
+    prominently retain missing, stale or failed stability results.
     """
     import html
     import json
@@ -337,6 +479,27 @@ def export_instructions(
 
     try:
         project = get_model()
+        studio = studio_result(project)
+        unchecked = [
+            studio_result(project, name, s["step_index"])
+            for name in project.submodels
+            for s in project.get_steps(name)
+            if s["parts_in_step"]
+            and (
+                not accepted_native(studio_result(project, name, s["step_index"]))
+                or studio_result(project, name, s["step_index"])["status"]
+                == "unverified_canvas"
+            )
+        ]
+        if unchecked and not draft:
+            return {
+                **err(
+                    "Run Studio Stability/Connectivity or explicitly export draft=True",
+                    "STUDIO_CHECK_REQUIRED",
+                ),
+                "studio_check": studio,
+                "unchecked_steps": unchecked,
+            }
         target = Path(directory).expanduser().resolve()
         if target.exists() and any(target.iterdir()):
             raise ValueError("Choose a new or empty export directory")
@@ -368,16 +531,48 @@ def export_instructions(
             "title": project.root_submodel,
             "bom": project.get_bom(None),
             "assemblies": [],
+            "draft": draft,
+            "studio_check": studio,
+            "unchecked_steps": unchecked,
         }
         page = [
             '<!doctype html><meta charset="utf-8"><title>LEGO assembly instructions</title><style>body{font:16px system-ui;max-width:1000px;margin:40px auto;color:#20242a}section{break-inside:avoid;border-bottom:1px solid #ddd;padding:16px}img{width:100%;max-width:700px}h2{break-before:page}li{margin:4px} @media print{body{margin:0}}</style>',
             "<h1>" + html.escape(project.root_submodel.rsplit(".", 1)[0]) + "</h1>",
         ]
+        if draft:
+            page.append(
+                "<p><strong>DRAFT — not approved for physical assembly.</strong> Studio check: "
+                + html.escape(studio["status"])
+                + ".</p>"
+            )
+        if studio["status"] != "not_run":
+            page.append(
+                "<p>Recorded Studio findings: "
+                + html.escape(
+                    str(
+                        {
+                            k: studio.get(k)
+                            for k in (
+                                "warnings",
+                                "cautions",
+                                "stability_issues",
+                                "detached_sections",
+                            )
+                        }
+                    )
+                )
+                + "</p>"
+            )
         for a, name in enumerate(ordered):
             assembly = {
                 "name": name,
                 "steps": project.get_steps(name),
                 "validation": reports[name],
+                "studio_checks": [
+                    studio_result(project, name, s["step_index"])
+                    for s in project.get_steps(name)
+                    if s["parts_in_step"]
+                ],
             }
             manifest["assemblies"].append(assembly)
             page.append("<h2>" + html.escape(name.rsplit(".", 1)[0]) + "</h2>")

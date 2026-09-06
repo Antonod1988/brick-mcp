@@ -22,16 +22,31 @@ INSTRUCTIONS = """Build LEGO models as real assembly instructions, one checked s
 6. validate_build distinguishes passed, failed and unverified. Only ordinary upright
    stud/receiver grids and vertical insertion are supported. Unknown pins, clips,
    hinges and unusual geometry must never be called verified or physically stable.
+   apply_step ALSO runs real Studio Stability AND Connectivity automatically via
+   the dedicated local native worker. Native issues/timeouts roll back the step;
+   allow_unverified does not bypass this. No Computer Use is required.
+   check_studio_stability checks existing models/prefixes, all_steps=True audits
+   every step of an assembly. Native flagged parts include exact coordinates.
+   inspect_studio_connectors returns actual native pin/bar/axle positions.
+   allow_cautions=True explicitly accepts soft cautions while keeping the counts.
+   allow_unverified_canvas=True tests full and rigid-subset models; missing-physics
+   sails stay unverified_canvas and require draft export. Never call them verified.
+   Reports persist in IO/MPD, are tied to model/step content, and become stale on edits.
 7. render_step shows new pieces against gray previous pieces. Software previews use
    real triangles and display transparent parts as opaque for instruction readability.
 8. export_instructions writes Studio IO, MPD, named step/BOM JSON and illustrated HTML.
    Native STUDIOSTEPDESC names and submodel steps are preserved. Open/reopen in Studio;
    live GUI synchronization is not provided.
+   Normal export requires current accepted native reports for every prefix. draft=True creates a
+   visibly labelled working draft with the missing/stale/failed check exposed.
 
 apply_step defaults to refusing unverified work. allow_unverified=True only accepts
 unknown connector cases; confirmed failures still roll back. Legacy batch now defaults
 to atomic rollback, stops on first error, and forbids disk writes; save separately.
 atomic=False explicitly requests the former best-effort behavior.
+apply_step(replace_existing=True, insert_at=i) replaces a step transactionally.
+remove_unused_submodel removes only unreferenced prototypes. The native worker
+auto-starts when needed; never use GUI clicks as the normal validation path.
 
 One active model is held per server. Save before restart; open_model changes part IDs.
 Use new filenames when editing a user's original model. Coordinates are LDU: X/Z studs

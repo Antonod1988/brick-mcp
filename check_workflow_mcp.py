@@ -90,7 +90,7 @@ async def main():
         validation, _ = await call("validate_build")
         assert validation["status"] == "passed"
         exported, _ = await call(
-            "export_instructions", directory=str(out / "instructions"), previews=False
+            "export_instructions", directory=str(out / "instructions"), previews=False, draft=True
         )
         assert exported["assemblies"] == 2 and Path(exported["studio_file"]).is_file()
         summary = dict(

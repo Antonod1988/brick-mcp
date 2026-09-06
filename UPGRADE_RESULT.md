@@ -1,4 +1,25 @@
-# Brick MCP 0.2 acceptance — 2026-09-06
+# Brick MCP 0.3 native Studio checks — 2026-09-06
+
+Implemented and exercised direct calls to Studio's StabilitySimulator through a
+dedicated local worker. No Computer Use is required. apply_step checks each prefix
+before commit and rechecks affected parents; native failures roll back. Atomic
+step replacement, explicit soft-caution handling, missing-canvas-physics reporting,
+native connector inspection and prototype cleanup are available. Fresh stdio
+exposes 34 tools. Existing app MCP connections need reconnecting for new schemas.
+
+Verification: 231 unit/regression tests; live native two-brick positive/negative
+checks; real stdio step acceptance and rollback; IO/MPD report persistence; and a
+cold-worker auto-start followed by the complete stdio/PNG workflow. Latest live
+workflow artifact: `output/workflow-check-blnxzvlz`. Unit tests stub the process
+transport; the live checks use installed Studio 2.26.8 (1).
+
+The repaired pirate ship is in `output/pirate-ship-checked`: 442 rigid parts / 77
+steps, and a separate 450-part / 85-step visual version with eight fabric sails.
+Rigid checks show zero red warnings, zero detached sections and zero instability,
+with 35 explicitly retained soft cautions. Fabric remains unverified; the display
+instruction export is a draft. Final reports and BOMs are alongside both models.
+
+## Previous 0.2 acceptance
 
 Completed the agreed instruction workflow upgrade. The configured stdio server
 exposes 31 tools. The runtime remains local; no paid AI provider calls were used.

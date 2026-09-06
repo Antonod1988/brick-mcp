@@ -168,7 +168,7 @@ async def main():
         destination = out / "booklet"
         if destination.exists() and any(destination.iterdir()):
             destination = Path(tempfile.mkdtemp(prefix="booklet-",dir=out))
-        exported = await call("export_instructions", directory=str(destination), previews=True)
+        exported = await call("export_instructions", directory=str(destination), previews=True, draft=True)
         (out / "result.json").write_text(
             json.dumps(
                 dict(

@@ -9,6 +9,7 @@ from brick_mcp.tools import (
     parts,
     render,
     workflow,
+    studio_check,
 )
 
 __all__ = [

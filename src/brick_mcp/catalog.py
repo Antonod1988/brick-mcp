@@ -147,67 +147,67 @@ def _guess_category(name: str) -> str:
     return "Other"
 
 
+def _part_header(lines):
+    name = category = ""
+    for i, raw in enumerate(lines):
+        if i > 20:
+            break
+        line = (
+            (raw.decode("utf8", "replace") if isinstance(raw, bytes) else raw)
+            .lstrip("\ufeff")
+            .strip()
+        )
+        if line.startswith("0 !CATEGORY "):
+            category = line[12:].strip()
+        elif not name and line.startswith("0 "):
+            value = line[2:].strip()
+            if value and not value.upper().startswith(
+                ("FILE ", "NOFILE", "NAME:", "AUTHOR:", "!", "BFC ", "STEP")
+            ):
+                name = value
+        if name and category:
+            break
+    return name, category or _guess_category(name)
+
+
 def _load_from_zip(zip_path: str) -> dict[str, dict[str, str]]:
-    result: dict[str, dict[str, str]] = {}
+    result = {}
     prefix = "ldraw/parts/"
     with zipfile.ZipFile(zip_path) as zf:
-        entries = [
-            n
-            for n in zf.namelist()
-            if n.lower().startswith(prefix)
-            and n.lower().endswith(".dat")
-            and "/" not in n[len(prefix) :]
-        ]
-        for entry in entries:
+        for entry in zf.namelist():
+            if not (
+                entry.lower().startswith(prefix)
+                and entry.lower().endswith(".dat")
+                and "/" not in entry[len(prefix) :]
+            ):
+                continue
             fname = entry.split("/")[-1].lower()
-            try:
-                with zf.open(entry) as fh:
-                    name = ""
-                    category = ""
-                    for lineno, raw in enumerate(fh):
-                        if lineno > 20:
-                            break
-                        line = raw.decode("utf-8", "replace").lstrip("\ufeff").strip()
-                        if lineno == 0:
-                            if line.startswith("0 "):
-                                name = line[2:].strip()
-                        elif line.startswith("0 !CATEGORY "):
-                            category = line[12:].strip()
-                            break
-                    if name:
-                        result[fname] = {
-                            "part_number": fname,
-                            "name": name,
-                            "category": category or _guess_category(name),
-                        }
-            except Exception:
-                pass
+            with zf.open(entry) as fh:
+                name, category = _part_header(fh)
+            if name:
+                result[fname] = {
+                    "part_number": fname,
+                    "name": name,
+                    "category": category,
+                }
     return result
 
 
 def _load_from_directory(library_path: str) -> dict[str, dict[str, str]]:
-    """Read the installed Studio/LDraw parts directory without copying its files."""
+    """Read installed Studio/LDraw headers, including DATs wrapped in MPD FILE blocks."""
     parts_dir = Path(library_path) / "parts"
     if not parts_dir.is_dir():
         raise FileNotFoundError(f"LDraw parts directory not found: {parts_dir}")
     result = {}
     for path in sorted(parts_dir.glob("*.dat")):
         with path.open(encoding="utf-8-sig", errors="replace") as fh:
-            first_line = fh.readline().strip()
-            if not first_line.startswith("0 "):
-                continue
-            name = first_line[2:].strip()
-            category = _guess_category(name)
-            for _ in range(20):
-                line = fh.readline().strip()
-                if line.startswith("0 !CATEGORY "):
-                    category = line[12:].strip()
-                    break
-        result[path.name.lower()] = {
-            "part_number": path.name.lower(),
-            "name": name,
-            "category": category,
-        }
+            name, category = _part_header(fh)
+        if name:
+            result[path.name.lower()] = {
+                "part_number": path.name.lower(),
+                "name": name,
+                "category": category,
+            }
     return result
 
 
