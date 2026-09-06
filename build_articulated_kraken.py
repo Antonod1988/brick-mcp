@@ -33,7 +33,7 @@ def located(p, origin, r):
     return {
         **p,
         **dict(zip(("x", "y", "z"), [round(origin[i] + v[i], 6) for i in range(3)])),
-        "rotation_matrix": [round(x, 9) for x in multiply(r, p["rotation_matrix"])],
+        "rotation_matrix": [round(x, 6) for x in multiply(r, p["rotation_matrix"])],
     }
 
 
@@ -49,7 +49,8 @@ def chassis(z):
     )
 
 
-def segments(side, z, angles):
+def segments(side, z, angles, thick_count=None):
+    thick_count = len(angles) - 2 if thick_count is None else thick_count
     joint = [170.0, 20.0, 0.0]
     mirror = I if side == 1 else Y180
     result = []
@@ -61,11 +62,11 @@ def segments(side, z, angles):
         origin = [joint[j] - offset[j] for j in range(3)]
         pieces = [
             part("14418" if i == len(angles) - 1 else "14419", 29, z=dz)
-            for dz in ((-10, 10) if i < len(angles) - 2 else (10,))
+            for dz in ((-10, 10) if i < thick_count else (10,))
         ]
-        if i < len(angles) - 2:
+        if i < thick_count:
             pieces.append(part("30602", 29))
-        elif i == len(angles) - 2:
+        elif i < len(angles) - 1:
             pieces += [part("49307", 29, x, 0, 10) for x in (-10, 10)]
         else:
             pieces += [part("98138", 29, x, -8, 10) for x in (-10, 10)]

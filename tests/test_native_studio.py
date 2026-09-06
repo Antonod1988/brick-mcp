@@ -41,6 +41,23 @@ def test_per_step_checks_survive_roundtrip_and_expire_on_edit(tmp_path, suffix):
     assert not export_instructions(str(tmp_path / "release"), previews=False)["ok"]
 
 
+@pytest.mark.parametrize("suffix", ["io", "mpd"])
+def test_generated_compound_rotation_keeps_saved_native_check(tmp_path, suffix):
+    from build_articulated_kraken import located
+    from build_orc_kraken import part, rx, ry
+
+    p = located(
+        part("3001", 4, 1.234567, 2.345678, 3.456789, rx(13)),
+        (178.234567, -98.654321, -49.123456),
+        ry(37),
+    )
+    assert apply_step("Compound pose", [p], preview=False, allow_unverified=True)["ok"]
+    target = tmp_path / ("compound." + suffix)
+    assert save_model(str(target))["ok"]
+    assert open_model(str(target))["ok"]
+    assert studio_result(get_model())["status"] == "clear"
+
+
 def test_step_calls_native_transport_each_time():
     with patch(
         "brick_mcp.tools.studio_check.run_native_check",

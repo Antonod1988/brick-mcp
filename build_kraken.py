@@ -21,7 +21,14 @@ PORTS = (-260, -60, 260)
 
 
 def part(pn, color, x=0, y=0, z=0, r=I):
-    return dict(part_number=pn, color=color, x=x, y=y, z=z, rotation_matrix=r)
+    return dict(
+        part_number=pn,
+        color=color,
+        x=round(x, 6),
+        y=round(y, 6),
+        z=round(z, 6),
+        rotation_matrix=[round(v, 6) for v in r],
+    )
 
 
 def place(parts, side, z):
