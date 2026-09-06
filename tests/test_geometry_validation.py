@@ -75,3 +75,37 @@ def test_half_stud_offset_is_not_a_connection():
         preview=False,
     )
     assert not result["ok"] and result["validation"][0]["floating"]
+
+
+def test_studio_unofficial_primitive_fallback(tmp_path):
+    from brick_mcp.geometry import mesh
+
+    main = tmp_path / "parts"
+    main.mkdir()
+    extra = tmp_path / "UnOfficial" / "p"
+    extra.mkdir(parents=True)
+    (main / "test.dat").write_text("1 16 0 0 0 1 0 0 0 1 0 0 0 1 axle.dat\n")
+    (extra / "axle.dat").write_text("3 16 0 0 0 1 0 0 0 1 0\n")
+    assert len(mesh(str(tmp_path), "test.dat")) == 1
+
+
+def test_unsupported_insertion_is_unverified_not_a_false_confirmed_block(monkeypatch):
+    import brick_mcp.validation as validation
+
+    monkeypatch.setattr(
+        validation, "world_bounds", lambda p: (-10, 10, p["y"], p["y"] + 8, -10, 10)
+    )
+    monkeypatch.setattr(validation, "connectors", lambda p: None)
+    monkeypatch.setattr(
+        validation, "shape", lambda pn: {"collision_kind": "conservative_box"}
+    )
+    parts = [
+        dict(id="old", part_number="axle", y=-20),
+        dict(id="new", part_number="axle", y=0),
+    ]
+    report = validation.validate_parts(parts, previous=parts[:1])
+    assert (
+        report["status"] == "unverified"
+        and report["unverified_access"]
+        and not report["blocked_access"]
+    )

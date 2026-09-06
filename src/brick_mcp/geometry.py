@@ -43,7 +43,7 @@ def _source(root, name):
     name = name.replace("\\", "/")
     if Path(name).is_absolute() or ".." in name.split("/") or ":" in name:
         raise ValueError("LDraw references must stay inside the parts library")
-    for folder in ("parts", "p", ""):
+    for folder in ("parts", "p", "UnOfficial/parts", "UnOfficial/p", ""):
         path = Path(root) / folder / name
         if path.is_file():
             return path

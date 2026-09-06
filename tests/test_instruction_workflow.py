@@ -20,6 +20,22 @@ def placement(pn="3001", x=0, y=0, z=0, color=4):
     return dict(part_number=pn, color=color, x=x, y=y, z=z)
 
 
+def test_allow_unverified_does_not_accept_known_disconnected_submodel():
+    new_model("checked")
+    assert create_submodel("Loose")["ok"]
+    project = get_model()
+    project.add_part("Loose.ldr", "3001", 4, 0, 0, 0)
+    project.add_part("Loose.ldr", "3001", 4, 200, 0, 0)
+    before = project.to_ldraw_text()
+    result = apply_step(
+        "Install",
+        [placement("Loose.ldr", color=16)],
+        allow_unverified=True,
+        preview=False,
+    )
+    assert not result["ok"] and project.to_ldraw_text() == before
+
+
 def test_step_rejection_restores_state_ids_and_undo_history():
     new_model("checked")
     assert apply_step("Bottom", [placement()], preview=False)["ok"]

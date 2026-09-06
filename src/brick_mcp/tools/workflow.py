@@ -91,9 +91,9 @@ def apply_step(
                 raise ValueError(f"Unknown color: {p['color']}")
             if p["part_number"] in project.submodels:
                 child = validate_project(project, p["part_number"])
-                if (
-                    not _accepted(child, allow_unverified)
-                    or len(child["components"]) != 1
+                if not _accepted(child, allow_unverified) or (
+                    len(child["components"]) != 1
+                    and not (allow_unverified and child["status"] == "unverified")
                 ):
                     raise ValueError(
                         f"Submodel must be connected before installation: {p['part_number']}"

@@ -44,7 +44,7 @@ def validate_parts(parts, ground_y=None, previous=()):
             unknown.append({"id": p["id"], "reason": str(exc)})
     if ground_y is None and boxes:
         ground_y = max(b[3] for b in boxes.values())
-    overlaps, potential, blocked = [], [], []
+    overlaps, potential, blocked, unverified_access = [], [], [], []
     # ponytail: O(n²) broad phase; add a spatial index when large models become slow.
     for i, a in enumerate(parts):
         if a["id"] not in boxes:
@@ -106,7 +106,12 @@ def validate_parts(parts, ground_y=None, previous=()):
                 and min(nb[1], ob[1]) > max(nb[0], ob[0]) + 0.5
                 and min(nb[5], ob[5]) > max(nb[4], ob[4]) + 0.5
             ):
-                blocked.append(
+                confirmed = all(
+                    profiles.get(p["id"]) is not None
+                    and shape(p["part_number"])["collision_kind"] == "regular_body"
+                    for p in (new, old)
+                )
+                (blocked if confirmed else unverified_access).append(
                     {
                         "part_id": new["id"],
                         "blocked_by": old["id"],
@@ -117,7 +122,7 @@ def validate_parts(parts, ground_y=None, previous=()):
     status = (
         "failed"
         if overlaps or (floating and not unknown) or blocked or below
-        else "unverified" if unknown or potential else "passed"
+        else "unverified" if unknown or potential or unverified_access else "passed"
     )
     return dict(
         status=status,
@@ -133,6 +138,7 @@ def validate_parts(parts, ground_y=None, previous=()):
         ],
         components=components,
         blocked_access=blocked,
+        unverified_access=unverified_access,
         scope="Ordinary upright studs/receivers; vertical insertion; no clutch-force or structural physics simulation",
     )
 
