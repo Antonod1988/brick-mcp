@@ -12,8 +12,11 @@ from brick_mcp._helpers import _egl_env, _find_ldview, err
 from brick_mcp.model import get_model as _get_model
 from brick_mcp.server import mcp
 
+# Initialize NumPy's native runtime on the main thread before FastMCP workers.
+from brick_mcp.rendering import render_parts
 
-@mcp.tool
+
+@mcp.tool(output_schema=None)
 def render_model(
     width: int = 800,
     height: int = 600,
@@ -35,6 +38,18 @@ def render_model(
         project = _get_model()
     except RuntimeError as exc:
         return err(str(exc), "NO_MODEL")
+
+    if os.environ.get("LDRAW_LIBRARY_PATH"):
+        try:
+            from brick_mcp.rendering import render_parts
+
+            return Image(
+                path=str(
+                    render_parts(project.flatten(), width, height, latitude, longitude)
+                )
+            )
+        except Exception as exc:
+            return err(str(exc), "RENDER_FAILED")
 
     ldview_bin = _find_ldview()
     if ldview_bin is None:

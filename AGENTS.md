@@ -6,9 +6,31 @@ Primary reference for AI coding agents (Copilot, Claude, etc.) working inside th
 
 ## What this project is
 
-`brick-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that lets AI assistants create, inspect, and edit LEGO models stored in BrickLink Studio (`.io`) and LDraw (`.ldr`) files. It is built with [FastMCP](https://github.com/jlowin/fastmcp). There is no graphical output — all tools return structured JSON dicts.
+`brick-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that lets AI assistants create, inspect, and edit LEGO models stored in BrickLink Studio (`.io`) and LDraw (`.ldr`) files. It is built with [FastMCP](https://github.com/jlowin/fastmcp). Tools return JSON envelopes and, when requested, PNG content blocks.
 
 ---
+
+## Local 0.2 instruction workflow
+
+- `geometry.py` is shared by bounds, connections and rendering. Do not restore the
+  removed hard-coded dimensions table. Unsupported geometry must remain explicit.
+- `instructions.py` reads/writes native STUDIOSTEPDESC descriptions and step groups.
+- `validation.py` covers ordinary upright studs/receivers and insertion from above;
+  it does not prove physical strength or support arbitrary clips/pins/hinges.
+- `tools/workflow.py` exposes apply_step, edit_step, create_submodel, undo_last_edit,
+  validate_build, render_step and export_instructions. Compound edits snapshot
+  memory; error/preview/save failure restores it. Files are replaced atomically.
+- `rendering.py` uses real triangles and a software z-buffer. NumPy must initialize
+  on the main thread before FastMCP workers. Mixed JSON/image tools explicitly set
+  output_schema=None, otherwise FastMCP 3.1 rejects successful PNG responses.
+- High-level step tools control preview timing explicitly. Low-level mutation tools
+  retain ok_with_render and respect suppress_render / BRICK_MCP_AUTO_RENDER.
+- Middleware serializes all MCP tool access to the singleton.
+- Colored submodel placements become explicit-color copies with reference color 16.
+  Remove the source's old header description from clones: Studio otherwise conflates
+  their identity. Variants are independent copies, not live derived views.
+- check_workflow_mcp.py tests real stdio/PNG/native step round trips;
+  rebuild_cottage_instructions.py tests the complete assembly workflow.
 
 ## Repository layout
 
@@ -174,7 +196,7 @@ def ok_with_render(project, data=None, message="") -> list | dict:
     Returns [dict, Image] when rendering succeeds, plain dict otherwise."""
 ```
 
-All mutation tools should use `ok_with_render()` so every edit automatically includes a visual preview. Error responses always use `err()`. Read-only inspection tools use plain `ok()`.
+Low-level mutation tools should use `ok_with_render()` so every edit automatically includes a visual preview. Error responses always use `err()`. Read-only inspection tools use plain `ok()`.
 
 ---
 
@@ -210,7 +232,7 @@ def my_tool(param: str, submodel: str = "") -> dict:
 
 ## Key invariants to maintain
 
-1. **Mutation tools use `ok_with_render()`, read-only tools use `ok()`, errors use `err()`.** `ok_with_render()` returns `[dict, Image]` when ldview is available, plain `dict` otherwise — FastMCP converts both to proper MCP content blocks. `render_model` returns a bare `Image` on success and `err()` on failure. Tools must never return `None`, raise exceptions, or return arbitrary dicts.
+1. **Low-level mutation tools use `ok_with_render()`, read-only tools use `ok()`, errors use `err()`.** `ok_with_render()` returns `[dict, Image]` when ldview is available, plain `dict` otherwise — FastMCP converts both to proper MCP content blocks. `render_model` returns a bare `Image` on success and `err()` on failure. Tools must never return `None`, raise exceptions, or return arbitrary dicts.
 2. **`get_model()` — always at call time.** No module-level references to the model object.
 3. **UIDs must round-trip.** When serializing to `modelv2.ldr`, existing `_uid` values must be preserved exactly — Studio tracks parts by UID.
 4. **`modelv2.ldr` is authoritative.** The MCP reads from it when present (Studio v2 writes here and reads from here). `model.ldr` is also written for compatibility.

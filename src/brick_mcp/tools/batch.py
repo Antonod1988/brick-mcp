@@ -88,110 +88,72 @@ def _strip_images(result: Any) -> dict:
     return result  # type: ignore[return-value]
 
 
-@mcp.tool
-def batch(calls: list[dict]) -> list | dict | Image:
-    """Execute multiple tool calls in a single round-trip.
-
-    Runs each call sequentially.  The state changes from each call (e.g. a part
-    added by ``add_part``) are immediately visible to the next call in the list.
-    A single optional PNG render is appended at the end when ldview is available,
-    instead of one render per mutation.
-
-    Args:
-        calls: List of ``{"tool": "<name>", "args": {...}}`` dicts.
-               ``"args"`` may be omitted for tools that take no arguments.
-
-    Returns:
-        ``{"ok": bool, "results": [...], "executed": N, "error_count": N}``
-        followed optionally by a PNG ``Image`` when ldview is available.
-
-        Each entry in ``results`` is the dict response from the corresponding
-        call.  The ``"ok"`` top-level key reflects whether ALL calls succeeded;
-        individual errors do not halt execution — all calls run regardless.
-
-    Example::
-
-        batch(calls=[
-            {"tool": "new_model", "args": {"name": "tower"}},
-            {"tool": "add_part",  "args": {"part_number": "3001", "color": 4,
-                                           "x": 0, "y": 0, "z": 0}},
-            {"tool": "add_part",  "args": {"part_number": "3001", "color": 4,
-                                           "x": 0, "y": -24, "z": 0}},
-            {"tool": "add_step"},
-            {"tool": "save_model", "args": {"path": "/tmp/tower.ldr"}},
-        ])
+@mcp.tool(output_schema=None)
+def batch(calls: list[dict], atomic: bool = True) -> list | dict | Image:
+    """Run memory edits sequentially with one preview. Default atomic=True
+    stops at the first error and restores the entire model. Disk writes and
+    explicit renders are forbidden in atomic batches; save after success.
+    atomic=False preserves legacy best-effort execution without rollback.
     """
-    if not isinstance(calls, list):
-        return err("'calls' must be a list of {tool, args} dicts", "INVALID_INPUT")
+    from brick_mcp.model import set_model
+    from brick_mcp._helpers import suppress_render
 
-    dispatch = _dispatch_table()
-    results = []
-    error_count = 0
-
-    for i, call in enumerate(calls):
-        if not isinstance(call, dict):
-            entry = err(
-                f"Call #{i}: expected a dict, got {type(call).__name__}", "INVALID_CALL"
-            )
-            results.append(entry)
-            error_count += 1
-            continue
-
-        tool_name = call.get("tool")
-        if not tool_name:
-            entry = err(f"Call #{i}: missing 'tool' key", "MISSING_TOOL")
-            results.append(entry)
-            error_count += 1
-            continue
-
-        fn = dispatch.get(tool_name)
-        if fn is None:
-            entry = err(
-                f"Call #{i}: unknown tool '{tool_name}'. "
-                f"Available: {sorted(dispatch.keys())}",
-                "UNKNOWN_TOOL",
-            )
-            results.append(entry)
-            error_count += 1
-            continue
-
-        args: dict = call.get("args") or {}
-        try:
-            raw = fn(**args)
-        except TypeError as exc:
-            entry = err(f"Call #{i} ({tool_name}): bad arguments — {exc}", "BAD_ARGS")
-            results.append(entry)
-            error_count += 1
-            continue
-        except Exception as exc:
-            entry = err(f"Call #{i} ({tool_name}): {exc}", "TOOL_ERROR")
-            results.append(entry)
-            error_count += 1
-            continue
-
-        result_dict = _strip_images(raw)
-        results.append(result_dict)
-        if not result_dict.get("ok", True):
-            error_count += 1
-
-    all_ok = error_count == 0
-    summary = ok(
-        {
-            "results": results,
-            "executed": len(calls),
-            "error_count": error_count,
-        },
-        f"Batch: {len(calls)} call(s), {error_count} error(s)",
-    )
-    summary["ok"] = all_ok
-
-    # Append a single render if the model exists and ldview is available
+    if not isinstance(calls, list) or len(calls) > 1000:
+        return err("calls must be a list of at most 1000 operations", "INVALID_INPUT")
     try:
-        project = get_model()
-        img = try_render(project)
+        original = get_model()
+        before = original.snapshot()
+    except RuntimeError:
+        original, before = None, None
+    dispatch, results = _dispatch_table(), []
+    with suppress_render():
+        for i, call in enumerate(calls):
+            try:
+                if not isinstance(call, dict):
+                    raise ValueError("Expected a {tool, args} object")
+                name = call.get("tool")
+                if not name:
+                    result = err(f"Call #{i}: missing tool", "MISSING_TOOL")
+                elif name not in dispatch:
+                    result = err(f"Unknown tool: {name}", "UNKNOWN_TOOL")
+                elif atomic and name in ("save_model", "render_model"):
+                    result = err(
+                        "Save/render separately after an atomic batch",
+                        "EXTERNAL_EFFECT_IN_BATCH",
+                    )
+                else:
+                    args = call.get("args") or {}
+                    result = _strip_images(dispatch[name](**args))
+                    if not isinstance(result, dict):
+                        result = ok(
+                            message="Non-text result omitted from batch summary"
+                        )
+            except TypeError as exc:
+                result = err(str(exc), "BAD_ARGS")
+            except Exception as exc:
+                result = err(str(exc), "INVALID_CALL")
+            results.append(result)
+            if atomic and not result.get("ok", False):
+                if original is not None:
+                    original.restore(before)
+                set_model(original)
+                break
+    errors = sum(not r.get("ok", False) for r in results)
+    rolled_back = atomic and bool(errors)
+    if atomic and not errors and before is not None:
+        get_model().remember(before)
+    summary = ok(
+        dict(
+            results=results,
+            executed=len(results),
+            error_count=errors,
+            rolled_back=rolled_back,
+        ),
+        f"Batch: {len(results)} call(s), {errors} error(s)",
+    )
+    summary["ok"] = not errors
+    try:
+        img = try_render(get_model()) if not rolled_back else None
     except RuntimeError:
         img = None
-
-    if img is not None:
-        return [summary, img]
-    return summary
+    return [summary, img] if img is not None else summary

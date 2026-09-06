@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import tempfile
+import json
 
 from fastmcp.utilities.types import Image
 
@@ -23,7 +25,10 @@ def new_model(name: str = "model") -> list | dict | Image:
     Returns:
         Model info: root_submodel name, submodels list, total_part_count.
     """
-    project = StudioProject.new(name)
+    try:
+        project = StudioProject.new(name)
+    except (ValueError, TypeError) as exc:
+        return err(str(exc), "INVALID_NAME")
     set_model(project)
     return ok_with_render(
         project, project.info(), f"Created new model '{project.root_submodel}'"
@@ -75,6 +80,10 @@ def open_model(path: str) -> list | dict | Image:
         return err(f"Failed to parse LDraw data: {e}", "PARSE_ERROR")
 
     project = StudioProject.from_blocks(path, blocks, raw_entries)
+    try:
+        project.flatten()
+    except (ValueError, KeyError) as e:
+        return err(str(e), "INVALID_MODEL")
     set_model(project)
     return ok_with_render(project, project.info(), f"Opened {os.path.basename(path)}")
 
@@ -108,16 +117,31 @@ def save_model(path: str = "") -> list | dict | Image:
     ldr_text = project.to_ldraw_text()
     ext = os.path.splitext(save_path)[1].lower()
 
+    temporary = None
     try:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        fd, temporary = tempfile.mkstemp(
+            prefix=".brick-mcp-", dir=os.path.dirname(save_path)
+        )
+        os.close(fd)
         if ext == ".io":
             v2_text = project.to_v2_ldraw_text()
-            io_file.write_io_file(save_path, ldr_text, project.raw_zip_entries, v2_text)
-        else:
-            os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-            with open(save_path, "w", encoding="utf-8") as f:
+            extras = dict(project.raw_zip_entries)
+            info = json.loads(extras.get(".info", b"{}"))
+            info["total_parts"] = len(project.flatten())
+            extras[".info"] = json.dumps(info).encode("utf8")
+            io_file.write_io_file(temporary, ldr_text, extras, v2_text)
+        elif ext in (".ldr", ".mpd", ".dat"):
+            with open(temporary, "w", encoding="utf-8") as f:
                 f.write(ldr_text)
+        else:
+            raise ValueError("Use .io, .ldr or .mpd for saved models")
+        os.replace(temporary, save_path)
     except Exception as e:
         return err(f"Failed to save: {e}", "SAVE_ERROR")
+    finally:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)
 
     project.source_path = save_path
     project._dirty = False

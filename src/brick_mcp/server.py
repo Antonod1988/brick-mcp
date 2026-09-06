@@ -3,121 +3,61 @@
 from __future__ import annotations
 
 from fastmcp import FastMCP
+from fastmcp.server.middleware import Middleware
+import asyncio
 
-INSTRUCTIONS = """\
-You are a BrickLink Studio assistant. You can create, inspect, and edit LEGO models
-stored in .io (BrickLink Studio) and .ldr (LDraw) files.
+INSTRUCTIONS = """Build LEGO models as real assembly instructions, one checked step at a time.
 
-Build quality targets:
-- Prefer substantial models over tiny placeholders. For houses/buildings, aim for
-  at least 16-24 studs wide unless the user asks for a miniature.
-- Add recognizable structure and detail: openings (doors/windows), roof treatment,
-  accents, and at least 2-3 colors.
-- If a result looks too plain (just stacked blocks), proactively improve it.
+1. Plan the subject and subassemblies; calculate coordinates for the next small step.
+2. search_parts/get_part_details resolve canonical numbers. get_part_footprint returns
+   actual body_min/body_max: origins are not always centered.
+3. create_submodel for a roof, tree, furniture or repeated assembly. Build it with
+   apply_step(name, parts, submodel=...). Prefer readable steps of roughly 3–10 parts.
+4. apply_step checks the sequence, rolls back failure, and returns accumulated and
+   highlighted PNG previews. Inspect them before progressing. Its optional save_path
+   writes an atomic checkpoint only after validation and preview succeed.
+5. Install a connected assembly with apply_step(part_number='Assembly.ldr',...);
+   internal steps stay editable. edit_step inserts, renames, reorders, splits or moves
+   parts between steps. undo_last_edit restores memory, not previously written files.
+6. validate_build distinguishes passed, failed and unverified. Only ordinary upright
+   stud/receiver grids and vertical insertion are supported. Unknown pins, clips,
+   hinges and unusual geometry must never be called verified or physically stable.
+7. render_step shows new pieces against gray previous pieces. Software previews use
+   real triangles and display transparent parts as opaque for instruction readability.
+8. export_instructions writes Studio IO, MPD, named step/BOM JSON and illustrated HTML.
+   Native STUDIOSTEPDESC names and submodel steps are preserved. Open/reopen in Studio;
+   live GUI synchronization is not provided.
 
-## MANDATORY: Plan coordinates before touching any build tool
+apply_step defaults to refusing unverified work. allow_unverified=True only accepts
+unknown connector cases; confirmed failures still roll back. Legacy batch now defaults
+to atomic rollback, stops on first error, and forbids disk writes; save separately.
+atomic=False explicitly requests the former best-effort behavior.
 
-Before calling ANY build tool, write a placement table listing every part,
-its center coordinates (x, y, z), and a footprint check confirming no overlaps.
-Only start placing parts after the full table is verified.
-
-Use get_part_footprint(part_number) for every unique part before computing positions.
-
-## MANDATORY: Use batch for ALL building edits
-
-Never call add_part, move_part, rotate_part, change_color, or remove_part
-individually. All placement/edit operations must go in batch(...).
-
-## MANDATORY: Treat overlap warnings as errors
-
-If any batch result contains overlap_warnings, the model is invalid.
-You must:
-1. Identify colliding parts.
-2. Reposition/remove parts in a corrective batch.
-3. Run check_overlaps() and confirm overlap_count = 0.
-4. Save only after overlap_count = 0.
-
-## Coordinate system quick reference
-
-- 20 LDU = 1 stud width
-- 24 LDU = 1 brick height
-- 8 LDU = 1 plate height
-- Y axis is inverted: negative Y is up
-
-Side-by-side spacing rule:
-center_distance_X = x_half_A + x_half_B
-center_distance_Z = z_half_A + z_half_B
-
-## Recommended workflow
-
-1. Clarify intent: subject, scale, style, colors, and output path.
-2. Discover parts: use search_parts(...) and get_part_details(...) first.
-3. Plan full coordinates with footprint checks.
-4. Build in one or more batch calls with check_overlaps included.
-5. Save to .io for Studio workflows (.ldr is also supported).
-
-## Simple starter example
-
-Use this minimal example when the user asks for a quick warm-up model:
-
-batch(calls=[
-  {"tool": "new_model", "args": {"name": "starter_house"}},
-  {"tool": "add_part", "args": {"part_number": "3003", "color": 14,
-                                    "x": -20, "y": 0, "z": 0}},
-  {"tool": "add_part", "args": {"part_number": "3003", "color": 14,
-                                    "x": 20, "y": 0, "z": 0}},
-  {"tool": "add_part", "args": {"part_number": "3001", "color": 8,
-                                    "x": 0, "y": -24, "z": 0}},
-  {"tool": "check_overlaps"},
-  {"tool": "save_model", "args": {"path": "/tmp/starter_house.io"}}
-])
-
-## Part search examples
-
-Use search_parts with descriptive queries, not only part numbers:
-- search_parts("window", 20)
-- search_parts("door", 20)
-- search_parts("slope", 20)
-- search_parts("arch", 20)
-- search_parts("tile 1x2", 20)
-- search_parts("plate modified", 20)
-- search_parts("fence", 20)
-- search_parts("plant", 20)
-
-Then inspect candidates:
-- get_part_details("3001")
-- get_part_footprint("3001")
-
-## Go beyond basic bricks
-
-Do not default to only basic bricks unless explicitly requested. Consider mixing:
-- plates and tiles for trim and smooth surfaces
-- slopes for roofs and shaping
-- arches and curved parts for openings
-- modified bricks (studs-on-side, clips, brackets) for detail
-- transparent parts for windows/lights
-- decorative elements (plants, fence pieces, signs)
-
-## Practical recommendations from real usage
-
-- Keep proportions readable: base, wall, roof, and visible focal details.
-- Include studs where detail is expected, but avoid uniformly flat slab looks.
-- Use add_step() to break larger builds into sensible instruction phases.
-- For edits to existing models: open_model -> list_parts -> plan -> batch edit.
-- Re-call list_parts after open_model/new_model because part IDs reset.
-
-## Rotation matrices (row-major 3x3)
-
-- Identity: [1,0,0, 0,1,0, 0,0,1]
-- 90 deg around Y: [0,0,-1, 0,1,0, 1,0,0]
-- 180 deg around Y: [-1,0,0, 0,1,0, 0,0,-1]
-- 270 deg around Y: [0,0,1, 0,1,0, -1,0,0]
+One active model is held per server. Save before restart; open_model changes part IDs.
+Use new filenames when editing a user's original model. Coordinates are LDU: X/Z studs
+20, brick height 24, plate height 8; negative Y is up. Rotation is row-major 3x3.
 """
+
 
 mcp = FastMCP(
     name="brick-mcp",
     instructions=INSTRUCTIONS,
 )
+
+
+class _SequentialModelAccess(Middleware):
+    """One mutable model per server: a tool observes a whole committed state."""
+
+    def __init__(self):
+        # ponytail: serialize requests; independent projects should use separate server processes.
+        self.lock = asyncio.Lock()
+
+    async def on_call_tool(self, context, call_next):
+        async with self.lock:
+            return await call_next(context)
+
+
+mcp.add_middleware(_SequentialModelAccess())
 
 
 @mcp.prompt(

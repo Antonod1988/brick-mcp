@@ -8,6 +8,7 @@ from brick_mcp.tools import (
     manipulation,
     parts,
     render,
+    workflow,
 )
 
 __all__ = [

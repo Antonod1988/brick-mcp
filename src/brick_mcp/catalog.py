@@ -20,6 +20,7 @@ import json
 import os
 import re
 import zipfile
+import math
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -27,151 +28,88 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 _FALLBACK: dict[str, str] = {
-    "3001.dat": "Brick 2 x 4",
-    "3002.dat": "Brick 2 x 3",
-    "3003.dat": "Brick 2 x 2",
-    "3004.dat": "Brick 1 x 2",
-    "3005.dat": "Brick 1 x 1",
-    "3006.dat": "Brick 2 x 10",
-    "3007.dat": "Brick 2 x 8",
-    "3008.dat": "Brick 1 x 8",
-    "3009.dat": "Brick 1 x 6",
-    "3010.dat": "Brick 1 x 4",
-    "3011.dat": "Brick 1 x 10",
+    "3001.dat": "Brick  2 x  4",
+    "3002.dat": "Brick  2 x  3",
+    "3003.dat": "Brick  2 x  2",
+    "3004.dat": "Brick  1 x  2",
+    "3005.dat": "Brick  1 x  1",
+    "3006.dat": "Brick  2 x 10",
+    "3007.dat": "Brick  2 x  8",
+    "3008.dat": "Brick  1 x  8",
+    "3009.dat": "Brick  1 x  6",
+    "3010.dat": "Brick  1 x  4",
+    "3011.dat": "Duplo Brick  2 x  4",
     "3012.dat": "Brick 1 x 12",
     "3014.dat": "Brick 1 x 16",
-    "3020.dat": "Plate 2 x 4",
-    "3021.dat": "Plate 2 x 3",
-    "3022.dat": "Plate 2 x 2",
-    "3023.dat": "Plate 1 x 2",
-    "3024.dat": "Plate 1 x 1",
-    "3031.dat": "Plate 4 x 4",
-    "3032.dat": "Plate 4 x 6",
-    "3033.dat": "Plate 6 x 8",
-    "3034.dat": "Plate 1 x 8",
-    "3035.dat": "Plate 4 x 8",
-    "3037.dat": "Slope Brick 45 2 x 4",
-    "3038.dat": "Slope Brick 45 2 x 3",
-    "3039.dat": "Slope Brick 45 2 x 2",
-    "3040.dat": "Slope Brick 45 2 x 1",
-    "3062b.dat": "Brick Round 1 x 1 Open Stud",
-    "3062.dat": "Brick Round 1 x 1",
-    "3068b.dat": "Tile 2 x 2",
-    "3069b.dat": "Tile 1 x 2",
-    "3070b.dat": "Tile 1 x 1",
-    "3176.dat": "Plate Special 3 x 2 with 1 Stud",
-    "3245c.dat": "Brick 1 x 2 x 2",
-    "3298.dat": "Slope Brick 33 3 x 2",
-    "3299.dat": "Slope Brick 33 3 x 1",
-    "3461.dat": "Plate 1 x 10",
-    "3460.dat": "Plate 1 x 12",
-    "3622.dat": "Brick 1 x 3",
-    "3623.dat": "Plate 1 x 3",
-    "3660.dat": "Slope Brick 45 2 x 2 Inverted",
-    "3665.dat": "Slope Brick 45 2 x 1 Inverted",
-    "3666.dat": "Plate 1 x 6",
-    "3710.dat": "Plate 1 x 4",
-    "3747b.dat": "Slope Brick 33 3 x 2 Inverted",
-    "3795.dat": "Plate 2 x 6",
-    "3832.dat": "Plate 2 x 10",
-    "3833.dat": "Plate 2 x 8",
-    "4070.dat": "Brick Special 1 x 1 with Headlight",
-    "4162.dat": "Tile 1 x 8",
-    "4282.dat": "Plate 2 x 16",
-    "4287.dat": "Slope Brick 33 3 x 1 Inverted",
-    "4477.dat": "Plate 1 x 10",
-    "6111.dat": "Brick 1 x 10",
-    "6112.dat": "Brick 1 x 12",
-    "30136.dat": "Brick Round 1 x 2",
-    "30414.dat": "Plate Special 1 x 4 with 2 Studs",
-    "32028.dat": "Plate Special 1 x 2 with Handle",
-    "32316.dat": "Technic Beam 5",
-    "32524.dat": "Technic Beam 7",
-    "41770.dat": "Wing 2 x 4 Right",
+    "3020.dat": "Plate  2 x  4",
+    "3021.dat": "Plate  2 x  3",
+    "3022.dat": "Plate  2 x  2",
+    "3023.dat": "Plate  1 x  2",
+    "3024.dat": "Plate  1 x  1",
+    "3031.dat": "Plate  4 x  4",
+    "3032.dat": "Plate  4 x  6",
+    "3033.dat": "Plate  6 x 10",
+    "3034.dat": "Plate  2 x  8",
+    "3035.dat": "Plate  4 x  8",
+    "3037.dat": "Slope Brick 45  2 x  4",
+    "3038.dat": "Slope Brick 45  2 x  3",
+    "3039.dat": "Slope Brick 45  2 x  2",
+    "3040.dat": "~Moved to 3040b",
+    "3062b.dat": "Brick  1 x  1 Round with Hollow Stud",
+    "3062.dat": "~Moved to 3062b",
+    "3068b.dat": "Tile  2 x  2 with Groove",
+    "3069b.dat": "Tile  1 x  2 with Groove",
+    "3070b.dat": "Tile  1 x  1 with Groove",
+    "3176.dat": "Plate  3 x  2 with Hole",
+    "3245c.dat": "Brick  1 x  2 x  2 without Understud",
+    "3298.dat": "Slope Brick 33  3 x  2",
+    "3299.dat": "Slope Brick 33  2 x  4 Double",
+    "3461.dat": "Propellor  4 Blade  5 Diameter with Rotor Holder",
+    "3460.dat": "Plate  1 x  8",
+    "3622.dat": "Brick  1 x  3",
+    "3623.dat": "Plate  1 x  3",
+    "3660.dat": "Slope Brick 45  2 x  2 Inverted",
+    "3665.dat": "~Moved to 3665a",
+    "3666.dat": "Plate  1 x  6",
+    "3710.dat": "Plate  1 x  4",
+    "3747b.dat": "Slope Brick 33  3 x  2 Inverted with Ribs between Studs",
+    "3795.dat": "Plate  2 x  6",
+    "3832.dat": "Plate  2 x 10",
+    "3833.dat": "Minifig Construction Helmet",
+    "4070.dat": "Brick  1 x  1 with Headlight",
+    "4162.dat": "Tile  1 x  8",
+    "4282.dat": "Plate  2 x 16",
+    "4287.dat": "~Moved to 4287a",
+    "4477.dat": "Plate  1 x 10",
+    "6111.dat": "Brick  1 x 10",
+    "6112.dat": "Brick  1 x 12",
+    "30136.dat": "Brick  1 x  2 Log",
+    "30414.dat": "Brick  1 x  4 with Studs on Side",
+    "32028.dat": "Plate  1 x  2 with Door Rail",
+    "32316.dat": "Technic Beam  5",
+    "32524.dat": "Technic Beam  7",
+    "41770.dat": "~Moved to 41770a",
     "41771.dat": "Wing 2 x 4 Left",
-    "43723.dat": "Wing 3 x 6 Right",
+    "43723.dat": "~Moved to 43723a",
     "43724.dat": "Wing 3 x 6 Left",
-    "50950.dat": "Slope Brick Curved 3 x 1",
-    "54200.dat": "Slope Brick 31 1 x 1 x 2/3",
-    "60479.dat": "Plate 1 x 12",
-    "60481.dat": "Slope Brick 65 2 x 1 x 2",
-    "63864.dat": "Tile 1 x 3",
-    "87079.dat": "Tile 2 x 4",
-    "87580.dat": "Plate Special 2 x 2 with 1 Stud",
-    "87609.dat": "Brick Round 2 x 2 Dome Top",
-    "92438.dat": "Plate 8 x 16",
-    "98283.dat": "Brick Special 1 x 2 with Groove",
-    "3855.dat": "Window 1 x 2 x 3",
-    "3856.dat": "Window Frame 1 x 4 x 3",
-    "15068.dat": "Slope Brick Curved 2 x 2 x 2/3",
-    "11477.dat": "Slope Brick Curved 2 x 1 x 2/3",
-    "3455.dat": "Arch 1 x 2",
-    "3308.dat": "Arch 1 x 4",
-    "4490.dat": "Arch 1 x 3",
-    "6182.dat": "Arch 1 x 6 x 2",
-}
-
-# ---------------------------------------------------------------------------
-# Hard-coded precise bounding boxes for common parts.
-# (x_half, y_full, z_half) in LDU.
-# LDraw origin: centre of TOP face. Body extends DOWN in +Y by y_full.
-# "Brick M x N": z_half=M*10, x_half=N*10, y_full=24.  Plates: y_full=8.
-# ---------------------------------------------------------------------------
-
-_PART_DIMS: dict[str, tuple[float, float, float]] = {
-    "3001.dat": (40.0, 24.0, 20.0),
-    "3002.dat": (30.0, 24.0, 20.0),
-    "3003.dat": (20.0, 24.0, 20.0),
-    "3004.dat": (20.0, 24.0, 10.0),
-    "3005.dat": (10.0, 24.0, 10.0),
-    "3006.dat": (100.0, 24.0, 20.0),
-    "3007.dat": (80.0, 24.0, 20.0),
-    "3008.dat": (80.0, 24.0, 10.0),
-    "3009.dat": (60.0, 24.0, 10.0),
-    "3010.dat": (40.0, 24.0, 10.0),
-    "3011.dat": (100.0, 24.0, 10.0),
-    "3012.dat": (120.0, 24.0, 10.0),
-    "3014.dat": (160.0, 24.0, 10.0),
-    "3622.dat": (30.0, 24.0, 10.0),
-    "6111.dat": (100.0, 24.0, 10.0),
-    "6112.dat": (120.0, 24.0, 10.0),
-    "3245c.dat": (20.0, 48.0, 10.0),
-    "3020.dat": (40.0, 8.0, 20.0),
-    "3021.dat": (30.0, 8.0, 20.0),
-    "3022.dat": (20.0, 8.0, 20.0),
-    "3023.dat": (20.0, 8.0, 10.0),
-    "3024.dat": (10.0, 8.0, 10.0),
-    "3031.dat": (40.0, 8.0, 40.0),
-    "3032.dat": (60.0, 8.0, 40.0),
-    "3033.dat": (80.0, 8.0, 60.0),
-    "3034.dat": (80.0, 8.0, 10.0),
-    "3035.dat": (80.0, 8.0, 40.0),
-    "3461.dat": (100.0, 8.0, 10.0),
-    "3460.dat": (120.0, 8.0, 10.0),
-    "3623.dat": (30.0, 8.0, 10.0),
-    "3666.dat": (60.0, 8.0, 10.0),
-    "3710.dat": (40.0, 8.0, 10.0),
-    "3795.dat": (60.0, 8.0, 20.0),
-    "3832.dat": (100.0, 8.0, 20.0),
-    "3833.dat": (80.0, 8.0, 20.0),
-    "4282.dat": (160.0, 8.0, 20.0),
-    "4477.dat": (100.0, 8.0, 10.0),
-    "60479.dat": (120.0, 8.0, 10.0),
-    "92438.dat": (160.0, 8.0, 80.0),
-    "30414.dat": (40.0, 8.0, 10.0),
-    "32028.dat": (20.0, 8.0, 10.0),
-    "87580.dat": (20.0, 8.0, 20.0),
-    "3176.dat": (20.0, 8.0, 30.0),
-    "3068b.dat": (20.0, 8.0, 20.0),
-    "3069b.dat": (20.0, 8.0, 10.0),
-    "3070b.dat": (10.0, 8.0, 10.0),
-    "4162.dat": (80.0, 8.0, 10.0),
-    "63864.dat": (30.0, 8.0, 10.0),
-    "87079.dat": (40.0, 8.0, 20.0),
-    "3062.dat": (10.0, 24.0, 10.0),
-    "3062b.dat": (10.0, 24.0, 10.0),
-    "30136.dat": (20.0, 24.0, 10.0),
-    "87609.dat": (20.0, 24.0, 20.0),
+    "50950.dat": "Slope Brick Curved  3 x  1",
+    "54200.dat": "Slope Brick 31  1 x  1 x  0.667",
+    "60479.dat": "Plate  1 x 12",
+    "60481.dat": "Slope Brick 65  2 x  1 x  2",
+    "63864.dat": "Tile  1 x  3",
+    "87079.dat": "Tile  2 x  4",
+    "87580.dat": "Plate  2 x  2 with Groove with 1 Centre Stud",
+    "87609.dat": "Plate  2 x  6 x  0.667 with Four Studs On Side and Four Raised",
+    "92438.dat": "Plate  8 x 16",
+    "98283.dat": "Brick  1 x  2 with Embossed Bricks",
+    "3855.dat": "~Moved to 3855b",
+    "3856.dat": "Window  1 x  2 x  3 Shutter",
+    "15068.dat": "Slope Brick Curved  2 x  2 x  0.667",
+    "11477.dat": "Slope Brick Curved  2 x  1",
+    "3455.dat": "Arch  1 x  6",
+    "3308.dat": "~Arch  1 x  8 x  2 (Obsolete)",
+    "4490.dat": "Arch  1 x  3",
+    "6182.dat": "Arch  1 x  4 x  2",
 }
 
 # ---------------------------------------------------------------------------
@@ -310,6 +248,8 @@ def search_catalog(query: str, limit: int = 20) -> list[dict[str, str]]:
     space before matching (LDraw titles sometimes use double spaces).
     """
     catalog = get_catalog()
+    if limit <= 0:
+        return []
     q = re.sub(r"\s+", " ", query.lower().strip())
     q_spaced = re.sub(r"(\d)x(\d)", r"\1 x \2", q)
     results: list[dict[str, str]] = []
@@ -323,88 +263,50 @@ def search_catalog(query: str, limit: int = 20) -> list[dict[str, str]]:
     return results
 
 
-def get_part_info(part_number: str) -> dict[str, str] | None:
-    """Return catalog info for one part, or None if not found."""
+def resolve_part_number(part_number: str) -> str:
     pn = part_number.lower().strip()
+    if not re.fullmatch(r"[a-z0-9_.-]+", pn) or pn.startswith("."):
+        raise ValueError("Invalid part number")
     if not pn.endswith(".dat"):
         pn += ".dat"
-    return get_catalog().get(pn)
+    seen = set()
+    while pn in get_catalog():
+        if pn in seen:
+            raise ValueError(f"Cyclic part alias: {part_number}")
+        seen.add(pn)
+        moved = re.match(r"~?Moved to (\S+)", get_catalog()[pn]["name"], re.I)
+        if not moved:
+            return pn
+        pn = moved[1].lower()
+        if not pn.endswith(".dat"):
+            pn += ".dat"
+    raise ValueError(f"Part not found: {pn}")
 
 
-# ---------------------------------------------------------------------------
+def get_part_info(part_number: str) -> dict[str, str] | None:
+    try:
+        canonical = resolve_part_number(part_number)
+        return dict(get_catalog()[canonical])
+    except ValueError:
+        return None
+
+
 # Part bounding-box dimensions
 # ---------------------------------------------------------------------------
 
-_DIM_PATTERN = re.compile(
-    r"(?P<m>\d+)\s*x\s*(?P<n>\d+)(?:\s*x\s*(?P<h>\d+(?:\.\d+)?))?",
-    re.IGNORECASE,
-)
-
-
-def _dims_from_name(name: str) -> tuple[float, float, float]:
-    nl = name.lower()
-    m = _DIM_PATTERN.search(nl)
-    if m:
-        z_half = float(int(m.group("m")) * 10)
-        x_half = float(int(m.group("n")) * 10)
-    else:
-        x_half = z_half = 10.0
-    y_full = 8.0 if any(w in nl for w in ("plate", "tile")) else 24.0
-    return (x_half, y_full, z_half)
-
 
 def get_part_dims(part_number: str) -> tuple[float, float, float]:
-    """Return (x_half, y_full, z_half) AABB half-extents in LDU.
+    from brick_mcp.geometry import shape
 
-    Body occupies:
-      X in [x - x_half, x + x_half]
-      Y in [y, y + y_full]   (Y inverted; body below LDraw origin)
-      Z in [z - z_half, z + z_half]
-    """
-    pn = part_number.lower().strip()
-    if not pn.endswith(".dat"):
-        pn += ".dat"
-    hard = _PART_DIMS.get(pn)
-    if hard:
-        return hard
-    info = get_part_info(pn)
-    if info:
-        return _dims_from_name(info["name"])
-    return (10.0, 24.0, 10.0)
+    s = shape(part_number)
+    lo, hi = s["body_min"], s["body_max"]
+    return ((hi[0] - lo[0]) / 2, hi[1] - lo[1], (hi[2] - lo[2]) / 2)
 
 
-# ---------------------------------------------------------------------------
-# AABB helpers used by layout tools
-# ---------------------------------------------------------------------------
+def part_aabb(x, y, z, rotation, part_number):
+    from brick_mcp.geometry import world_bounds
 
-
-def part_aabb(
-    x: float,
-    y: float,
-    z: float,
-    rotation: list[float],
-    part_number: str,
-) -> tuple[float, float, float, float, float, float]:
-    """Compute world-space AABB (xmin,xmax,ymin,ymax,zmin,zmax) for a placed part.
-
-    For rotated parts the 8 OBB corners are transformed and their AABB is returned
-    (conservative — may over-estimate for highly non-cubic parts at odd angles).
-    """
-    hx, y_full, hz = get_part_dims(part_number)
-    hy = y_full / 2.0
-    # LDraw origin is at top face; body centre is hy below in +Y direction
-    cx, cy, cz = x, y + hy, z
-    r = rotation
-    xs: list[float] = []
-    ys: list[float] = []
-    zs: list[float] = []
-    for sx in (-hx, hx):
-        for sy in (-hy, hy):
-            for sz in (-hz, hz):
-                xs.append(cx + r[0] * sx + r[1] * sy + r[2] * sz)
-                ys.append(cy + r[3] * sx + r[4] * sy + r[5] * sz)
-                zs.append(cz + r[6] * sx + r[7] * sy + r[8] * sz)
-    return (min(xs), max(xs), min(ys), max(ys), min(zs), max(zs))
+    return world_bounds(dict(x=x, y=y, z=z, rotation=rotation, part_number=part_number))
 
 
 def aabbs_overlap(

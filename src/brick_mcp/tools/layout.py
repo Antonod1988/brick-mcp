@@ -36,47 +36,23 @@ def check_overlaps(submodel: str = "") -> dict:
         }
     """
     try:
-        project = get_model()
-    except RuntimeError as e:
-        return err(str(e), "NO_MODEL")
+        from brick_mcp.validation import validate_parts
 
-    try:
-        parts = project.list_parts(submodel or None)
-    except KeyError as e:
-        return err(str(e), "SUBMODEL_NOT_FOUND")
-
-    aabbs = []
-    for p in parts:
-        bb = part_aabb(p["x"], p["y"], p["z"], p["rotation"], p["part_number"])
-        aabbs.append((p, bb))
-
-    overlaps = []
-    for i in range(len(aabbs)):
-        pa, ba = aabbs[i]
-        for j in range(i + 1, len(aabbs)):
-            pb, bb = aabbs[j]
-            if aabbs_overlap(ba, bb):
-                overlaps.append(
-                    {
-                        "part_a": {
-                            "id": pa["id"],
-                            "part_number": pa["part_number"],
-                            "x": pa["x"],
-                            "y": pa["y"],
-                            "z": pa["z"],
-                        },
-                        "part_b": {
-                            "id": pb["id"],
-                            "part_number": pb["part_number"],
-                            "x": pb["x"],
-                            "y": pb["y"],
-                            "z": pb["z"],
-                        },
-                    }
-                )
-
-    msg = f"{len(overlaps)} overlap(s) found" if overlaps else "No overlaps detected"
-    return ok({"overlap_count": len(overlaps), "overlaps": overlaps}, msg)
+        report = validate_parts(get_model().flatten(submodel or None))
+        return ok(
+            {
+                "overlap_count": len(report["overlaps"]),
+                "overlaps": report["overlaps"],
+                "potential_overlaps": report.get("potential_overlaps", []),
+                "unknown": report["unknown"],
+                "complete": not report["unknown"]
+                and not report.get("potential_overlaps"),
+            }
+        )
+    except RuntimeError as exc:
+        return err(str(exc), "NO_MODEL")
+    except Exception as exc:
+        return err(str(exc), "VALIDATION_FAILED")
 
 
 @mcp.tool
@@ -116,7 +92,7 @@ def validate_placement(
     )
 
     try:
-        parts = project.list_parts(submodel or None)
+        parts = project.flatten(submodel or None)
     except KeyError as e:
         return err(str(e), "SUBMODEL_NOT_FOUND")
 

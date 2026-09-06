@@ -90,35 +90,24 @@ def get_part_footprint(part_number: str) -> dict:
                             " center-to-center distance >= 80 LDU (40+40)."
         }
     """
-    pn = part_number.strip()
-    if not pn.lower().endswith(".dat"):
-        pn_dat = pn + ".dat"
-    else:
-        pn_dat = pn
+    try:
+        from brick_mcp.geometry import shape
 
-    x_half, height, z_half = get_part_dims(pn_dat)
-    info = get_part_info(pn_dat)
-    name = info["name"] if info else pn_dat
-
-    note = (
-        f"Two of these placed side-by-side in X need center-to-center distance"
-        f" >= {int(x_half * 2)} LDU ({int(x_half)}+{int(x_half)})."
-        f" Side-by-side in Z: >= {int(z_half * 2)} LDU ({int(z_half)}+{int(z_half)})."
-    )
-
-    return ok(
-        {
-            "part_number": pn_dat.lower(),
-            "name": name,
-            "x_half": x_half,
-            "z_half": z_half,
-            "height": height,
-            "x_span": x_half * 2,
-            "z_span": z_half * 2,
-            "placement_note": note,
-        },
-        f"{name}: x_span={int(x_half*2)} z_span={int(z_half*2)} height={int(height)} LDU",
-    )
+        data = shape(part_number)
+        lo, hi = data["body_min"], data["body_max"]
+        return ok(
+            {
+                **data,
+                "x_half": (hi[0] - lo[0]) / 2,
+                "z_half": (hi[2] - lo[2]) / 2,
+                "x_span": hi[0] - lo[0],
+                "z_span": hi[2] - lo[2],
+                "height": hi[1] - lo[1],
+                "placement_note": "Use body_min/body_max: a part origin need not be centered.",
+            }
+        )
+    except (ValueError, OSError) as exc:
+        return err(str(exc), "GEOMETRY_UNAVAILABLE")
 
 
 @mcp.tool

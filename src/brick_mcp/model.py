@@ -13,6 +13,7 @@ The model wraps LDraw command lists with:
 from __future__ import annotations
 
 import os
+import copy
 import uuid
 from dataclasses import dataclass, field
 
@@ -97,6 +98,7 @@ class StudioProject:
         self.submodels = submodels
         self.raw_zip_entries = raw_zip_entries
         self._dirty = False
+        self._undo = []
 
     # ------------------------------------------------------------------
     # Constructors
@@ -105,6 +107,11 @@ class StudioProject:
     @classmethod
     def new(cls, name: str) -> "StudioProject":
         """Create a new, empty model with a single empty submodel."""
+        from brick_mcp.instructions import clean_name
+
+        name = clean_name(name)
+        if any(c in name for c in "/\\:"):
+            raise ValueError("Model name must not be a path")
         if not name.lower().endswith(".ldr"):
             name = name + ".ldr"
         sd = _SubmodelData(name=name)
@@ -167,19 +174,120 @@ class StudioProject:
     ) -> str:
         """Add a part and return its session UUID."""
         sd = self._submodel(submodel)
-        part_file = normalize_part_number(part_number)
+        from brick_mcp.catalog import resolve_part_number
+        from brick_mcp.geometry import validate_transform
+        from brick_mcp.colors import get_color
+
+        if get_color(color) is None and color != 16:
+            raise ValueError(f"Unknown color: {color}")
+
+        part_file = (
+            part_number
+            if part_number in self.submodels
+            else resolve_part_number(part_number)
+        )
         if matrix is None:
             matrix = IDENTITY_MATRIX
         if len(matrix) != 9:
             raise ValueError("rotation_matrix must have exactly 9 values")
+        validate_transform(x, y, z, matrix)
+        if part_file in self.submodels:
+
+            def references(name, seen):
+                if name == sd.name:
+                    return True
+                if name in seen:
+                    return False
+                return any(
+                    references(c.part_file, seen | {name})
+                    for c in self.submodels[name]._parts.values()
+                    if c.part_file in self.submodels
+                )
+
+            if references(part_file, set()):
+                raise ValueError("Submodel placement would create a cycle")
+            if color != 16:
+                part_file = self._colored_variant(part_file, color)
+                color = 16
         pid = uuid.uuid4().hex[:12]
+        uid = 1 + max(
+            (
+                c._uid
+                for model in self.submodels.values()
+                for c in model._parts.values()
+            ),
+            default=0,
+        )
         cmd = PartLine(
-            color=color, x=x, y=y, z=z, matrix=matrix, part_file=part_file, _id=pid
+            color=color,
+            x=x,
+            y=y,
+            z=z,
+            matrix=matrix,
+            part_file=part_file,
+            _id=pid,
+            _uid=uid,
         )
         sd.commands.append(cmd)
         sd._parts[pid] = cmd
         self._dirty = True
         return pid
+
+    def _colored_variant(self, source, color):
+        """Studio tints whole references: use explicit-color copies for LDraw inheritance."""
+        from brick_mcp.colors import get_color
+        import json
+
+        marker = "!BRICK_MCP VARIANT " + json.dumps([source, color])
+        for name, existing in self.submodels.items():
+            if any(
+                isinstance(c, MetaCommand) and c.text == marker
+                for c in existing.commands
+            ):
+                return name
+        base = (
+            source.rsplit(".", 1)[0]
+            + " - "
+            + get_color(color)["name"].replace("_", " ")
+        )
+        name, suffix = base + ".ldr", 2
+        while name in self.submodels:
+            name = f"{base} {suffix}.ldr"
+            suffix += 1
+        sd = copy.deepcopy(self._submodel(source))
+        sd.name = name
+        for cmd in sd.commands:
+            if isinstance(cmd, PartLine):
+                cmd._id, cmd._uid = uuid.uuid4().hex[:12], 0
+        sd._rebuild_index()
+        self.submodels[name] = sd
+        for cmd in sd._parts.values():
+            value = color if cmd.color == 16 else cmd.color
+            if cmd.part_file in self.submodels:
+                if value != 16:
+                    cmd.part_file = self._colored_variant(cmd.part_file, value)
+                cmd.color = 16
+            else:
+                cmd.color = value
+        for cmd in sd._parts.values():
+            cmd._uid = 1 + max(
+                (c._uid for m in self.submodels.values() for c in m._parts.values()),
+                default=0,
+            )
+        sd.commands = [
+            c
+            for c in sd.commands
+            if not (
+                isinstance(c, MetaCommand)
+                and (c.text.startswith("Name:") or c.text == source.rsplit(".", 1)[0])
+            )
+        ]
+        sd.commands[:0] = [
+            MetaCommand(base),
+            MetaCommand("Name: " + base),
+            MetaCommand(marker),
+        ]
+        return name
 
     def remove_part(self, part_id: str, submodel: str | None) -> bool:
         """Remove a part by UUID. Returns True if found and removed."""
@@ -200,6 +308,9 @@ class StudioProject:
         cmd = sd._find_part(part_id)
         if cmd is None:
             return False
+        from brick_mcp.geometry import validate_transform
+
+        validate_transform(x, y, z, cmd.matrix)
         cmd.x = x
         cmd.y = y
         cmd.z = z
@@ -216,6 +327,9 @@ class StudioProject:
         cmd = sd._find_part(part_id)
         if cmd is None:
             return False
+        from brick_mcp.geometry import validate_transform
+
+        validate_transform(cmd.x, cmd.y, cmd.z, matrix)
         cmd.matrix = tuple(matrix)
         self._dirty = True
         return True
@@ -296,50 +410,103 @@ class StudioProject:
         return result
 
     def get_bom(self, submodel: str | None) -> dict[str, dict[str, int]]:
-        """Return bill of materials: {part_number: {color_code_str: count}}."""
-        sd = self._submodel(submodel)
-        bom: dict[str, dict[str, int]] = {}
-        for cmd in sd.commands:
-            if isinstance(cmd, PartLine):
-                pn = cmd.part_file
-                col = str(cmd.color)
-                bom.setdefault(pn, {})
-                bom[pn][col] = bom[pn].get(col, 0) + 1
+        bom = {}
+        for part in self.flatten(submodel):
+            colors = bom.setdefault(part["part_number"], {})
+            color = str(part["color"])
+            colors[color] = colors.get(color, 0) + 1
         return bom
 
-    def get_steps(self, submodel: str | None) -> list[dict]:
-        """Return step boundaries as a list of dicts."""
-        sd = self._submodel(submodel)
-        steps = []
-        current_parts = 0
-        cumulative = 0
-        for cmd in sd.commands:
-            if isinstance(cmd, PartLine):
-                current_parts += 1
-            elif isinstance(cmd, MetaCommand) and cmd.text == "STEP":
-                cumulative += current_parts
-                steps.append(
-                    {
-                        "step_index": len(steps),
-                        "parts_in_step": current_parts,
-                        "cumulative_parts": cumulative,
-                    }
-                )
-                current_parts = 0
-        # Implicit final step (or only step if no STEP commands)
-        cumulative += current_parts
-        steps.append(
-            {
-                "step_index": len(steps),
-                "parts_in_step": current_parts,
-                "cumulative_parts": cumulative,
-            }
+    def snapshot(self):
+        return copy.deepcopy(
+            (
+                self.source_path,
+                self.root_submodel,
+                self.submodels,
+                self.raw_zip_entries,
+                self._dirty,
+            )
         )
-        return steps
+
+    def restore(self, state):
+        (
+            self.source_path,
+            self.root_submodel,
+            self.submodels,
+            self.raw_zip_entries,
+            self._dirty,
+        ) = copy.deepcopy(state)
+
+    def remember(self, state):
+        self._undo.append(state)
+        del self._undo[:-20]
+
+    def flatten(self, submodel=None, through_step=None):
+        from brick_mcp.geometry import transform, multiply
+        from brick_mcp.instructions import groups
+
+        root = self._submodel(submodel).name
+        result = []
+
+        def visit(
+            name,
+            matrix,
+            offset,
+            inherited_color,
+            path,
+            stack,
+            limit=None,
+            root_step=None,
+        ):
+            if name in stack or len(stack) >= 32:
+                raise ValueError("Cyclic or excessively nested submodels")
+            for i, group in enumerate(groups(self._submodel(name))):
+                if limit is not None and i > limit:
+                    break
+                for cmd in group["commands"]:
+                    if not isinstance(cmd, PartLine):
+                        continue
+                    xyz = transform((cmd.x, cmd.y, cmd.z), matrix, offset)
+                    rotation = multiply(matrix, cmd.matrix)
+                    color = inherited_color if cmd.color == 16 else cmd.color
+                    ident = path + cmd._id
+                    step = i if root_step is None else root_step
+                    if cmd.part_file in self.submodels:
+                        visit(
+                            cmd.part_file,
+                            rotation,
+                            xyz,
+                            color,
+                            ident + "/",
+                            stack + (name,),
+                            root_step=step,
+                        )
+                    else:
+                        result.append(
+                            dict(
+                                id=ident,
+                                source_id=cmd._id,
+                                part_number=cmd.part_file,
+                                color=color,
+                                x=xyz[0],
+                                y=xyz[1],
+                                z=xyz[2],
+                                rotation=list(rotation),
+                                step_index=step,
+                            )
+                        )
+
+        visit(root, IDENTITY_MATRIX, (0, 0, 0), 16, "", (), through_step)
+        return result
+
+    def get_steps(self, submodel: str | None) -> list[dict]:
+        from brick_mcp.instructions import describe_steps
+
+        return describe_steps(self._submodel(submodel))
 
     def info(self) -> dict:
         """Return metadata about the project."""
-        total_parts = sum(sd.part_count() for sd in self.submodels.values())
+        total_parts = len(self.flatten())
         return {
             "source_path": self.source_path,
             "filename": (
@@ -357,13 +524,47 @@ class StudioProject:
 
     def to_ldraw_text(self) -> str:
         """Serialize the project to standard LDraw text (type-1 part lines)."""
-        blocks = [(sd.name, sd.commands) for sd in self.submodels.values()]
+        blocks = self._export_blocks()
         return to_ldraw_text(blocks)
 
     def to_v2_ldraw_text(self) -> str:
         """Serialize the project in BrickLink Studio v2 format (type-11 part lines)."""
-        blocks = [(sd.name, sd.commands) for sd in self.submodels.values()]
+        blocks = self._export_blocks()
         return to_v2_ldraw_text(blocks)
+
+    def _export_blocks(self):
+        from brick_mcp.instructions import groups, write_groups
+
+        result = []
+        for sd in self.submodels.values():
+            output = copy.deepcopy(sd)
+            for cmd in output.commands[:]:
+                if isinstance(cmd, MetaCommand) and cmd.text.startswith(
+                    "!BRICK_MCP VARIANT "
+                ):
+                    import json
+
+                    source, _ = json.loads(cmd.text[len("!BRICK_MCP VARIANT ") :])
+                    output.commands = [
+                        c
+                        for c in output.commands
+                        if not (
+                            isinstance(c, MetaCommand)
+                            and c.text == source.rsplit(".", 1)[0]
+                        )
+                    ]
+            write_groups(output, groups(output))
+            if not any(
+                isinstance(c, MetaCommand) and c.text.startswith("Name:")
+                for c in output.commands
+            ):
+                title = sd.name.rsplit(".", 1)[0]
+                output.commands[:0] = [
+                    MetaCommand(title),
+                    MetaCommand("Name: " + title),
+                ]
+            result.append((sd.name, output.commands))
+        return result
 
     def _part_as_dict(self, part_id: str, submodel: str | None) -> dict | None:
         """Return part dict for a single part by UUID."""

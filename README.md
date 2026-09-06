@@ -1,5 +1,7 @@
 # brick-mcp
 
+Local 0.2 instruction-workflow edition. See [LOCAL_SETUP.md](LOCAL_SETUP.md) for Windows setup, commands, verification and current limits.
+
 An [MCP](https://modelcontextprotocol.io/) server that lets AI assistants create, inspect, and edit LEGO models stored in BrickLink Studio (`.io`) and LDraw (`.ldr`) files. Ask your AI assistant to open a file, move parts around, change colors, add new bricks — then save back to a file that opens directly in BrickLink Studio.
 
 ## Features
@@ -10,6 +12,19 @@ An [MCP](https://modelcontextprotocol.io/) server that lets AI assistants create
 - Search the built-in parts database and look up LDraw color codes
 - Create new models from scratch with `new_model()`
 
+## Instruction workflow (0.2)
+
+Use `apply_step` for a named construction step with validation, rollback and two
+PNG previews. `edit_step` inserts/renames/reorders/splits steps and moves parts.
+`create_submodel` builds independent assemblies; `undo_last_edit` restores memory.
+`validate_build` checks ordinary stud connections and vertical insertion access.
+`render_step` highlights new parts. `export_instructions` writes native Studio IO,
+MPD, an illustrated HTML booklet and a JSON step/BOM manifest.
+
+Aliases resolve to canonical parts and dimensions come from actual LDraw geometry.
+Complex connectors remain **unverified**. `batch` defaults to atomic memory edits;
+save separately. `atomic=False` enables explicit legacy best-effort execution.
+
 ## Requirements
 
 - Python ≥ 3.14
@@ -18,7 +33,7 @@ An [MCP](https://modelcontextprotocol.io/) server that lets AI assistants create
 Without Nix, install Python dependencies manually:
 
 ```sh
-pip install "fastmcp>=3.1.0" "pyzipper>=0.3.6"
+pip install "fastmcp>=3.1.0" "pyzipper>=0.3.6" "numpy>=2.4,<3" "pillow>=12,<13"
 ```
 
 ## MCP client configuration

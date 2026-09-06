@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 
 from brick_mcp.model import get_model, set_model
-from brick_mcp.tools.batch import batch
+from brick_mcp.tools.batch import batch as _batch
+from functools import partial
+
+# Existing tests document explicit legacy best-effort behavior.
+batch = partial(_batch, atomic=False)
 
 
 class TestBatchBasic:

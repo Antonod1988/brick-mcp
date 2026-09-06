@@ -10,9 +10,22 @@ import os
 import shutil
 import subprocess
 import tempfile
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from fastmcp.utilities.types import Image
+
+_render_suppressed = ContextVar("brick_mcp_render_suppressed", default=False)
+
+
+@contextmanager
+def suppress_render():
+    token = _render_suppressed.set(True)
+    try:
+        yield
+    finally:
+        _render_suppressed.reset(token)
 
 
 def ok(data: Any = None, message: str = "") -> dict:
@@ -77,6 +90,15 @@ def _egl_env() -> dict[str, str]:
 
 def try_render(project: Any, width: int = 800, height: int = 600) -> Image | None:
     """Best-effort render of the current model. Returns Image or None."""
+    if _render_suppressed.get() or os.environ.get("BRICK_MCP_AUTO_RENDER") == "0":
+        return None
+    if os.environ.get("LDRAW_LIBRARY_PATH"):
+        try:
+            from brick_mcp.rendering import render_parts
+
+            return Image(path=str(render_parts(project.flatten(), width, height)))
+        except ValueError, OSError, RuntimeError, subprocess.TimeoutExpired:
+            return None
     ldview_bin = _find_ldview()
     if ldview_bin is None:
         return None
@@ -137,7 +159,7 @@ def placement_warnings(project: Any, part_id: str, submodel: Any) -> list[dict]:
     try:
         from brick_mcp.catalog import aabbs_overlap, part_aabb
 
-        parts = project.list_parts(submodel)
+        parts = project.flatten(submodel)
         target = next((p for p in parts if p["id"] == part_id), None)
         if target is None:
             return []

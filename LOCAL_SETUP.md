@@ -1,71 +1,100 @@
-# Brick MCP on this Windows computer
+# Brick MCP 0.2 — сборка и инструкции
 
-Installed from https://github.com/datakurre/brick-mcp at upstream commit
-`90c97bb3a602a81818553c1bf8c56769a1bc7eaf` on 2026-09-06.
-Local development branch: `codex/windows-studio-setup`.
+Проект: `D:\pythonProject4\brick-mcp`. Сервер Codex: `brick`, stdio.
+Python 3.14 находится в `.venv`. Ветка: `codex/instruction-workflow`.
+Upstream: datakurre/brick-mcp, исходный коммит `90c97bb`.
 
-- Source: `D:\pythonProject4\brick-mcp`.
-- Dedicated runtime: `.venv\Scripts\python.exe` (Python 3.14.7).
-- Dependencies: upstream `uv.lock`, FastMCP 3.1.0.
-- Codex server name: `brick`, stdio transport, enabled in
-  `C:\Users\user\.codex\config.toml`; startup timeout 30 seconds.
-- Studio library: `D:\Progs\Studio 2.0\ldraw`, 12,132 catalog entries.
-- Fast catalog snapshot: `.cache\studio-catalog.json`.
-- Models created by the smoke check: `output\mcp-check-*\`.
+## Рабочий процесс
 
-The local patch adds `LDRAW_LIBRARY_PATH` directory loading and
-`LDRAW_CATALOG_PATH` JSON snapshot loading. The snapshot takes precedence so
-each server process need not open 12,132 individual files at first search.
-Original Nix ZIP discovery and the fallback table still work when neither
-variable is set. This changes search metadata, not the geometry validator.
+1. `new_model` создаёт модель. `get_part_details` разрешает старые номера,
+   `get_part_footprint` возвращает границы из геометрии LDraw.
+2. `apply_step(name, parts, submodel, preview=True, save_path=...)` добавляет
+   небольшой этап, проверяет последовательность и крепления, создаёт два PNG.
+   Контрольный файл сохраняется только после успеха. При ошибке шага, картинки
+   или записи возвращается прежнее состояние модели.
+3. `create_submodel` создаёт отдельный узел. Собранный узел устанавливается через
+   `apply_step` с `part_number="Roof.ldr"`. Внутренние этапы сохраняются.
+   Повторные экземпляры учитываются в общей ведомости деталей.
+4. `edit_step`: insert, rename, reorder, split, move_parts, merge_next,
+   delete_empty. Индексы с нуля. `apply_step(insert_at=...)` заполняет пустой
+   этап либо вставляет новый.
+5. `undo_last_edit` восстанавливает последнюю составную правку в памяти
+   (20 состояний). Файлы на диске эта команда не откатывает.
+6. `render_step` показывает обычный вид и новые детали на фоне серых предыдущих.
+   `render_model` показывает всю модель.
+7. `validate_build(details=False)` возвращает краткие результаты всех этапов;
+   `details=True` включает полный граф связей.
+8. `export_instructions` создаёт model.io, model.mpd, instructions.json и
+   instructions.html с изображениями и деталями каждого этапа. Каталог экспорта
+   должен быть новым/пустым.
 
-## Checks
+Все изменения делать через MCP. Computer Use — только при необходимости
+проверки возможностей/совместимости интерфейса Studio.
 
-Run from this directory in PowerShell:
+## Границы проверок
+
+Проверяются обычные вертикальные пины/гнёзда, сетка, висящие компоненты,
+соединённость узла перед установкой, пересечения обычных прямоугольных тел,
+доступ новой детали сверху. Для сложной геометрии пересечение ограничивающих
+коробок считается потенциальным, а не доказанным пересечением деталей.
+
+Результат: passed, failed или unverified. Клипсы, шарниры, Technic и нестандартные
+ориентации явно не подтверждены. allow_unverified=True разрешает только
+неопределённые случаи; достоверные ошибки всё равно откатываются. Это не расчёт
+прочности или силы сцепления. Другие траектории установки не моделируются.
+
+## Studio
+
+Имена этапов: штатные `0 STUDIOSTEPDESC ...`. Детали и границы этапов сохраняются
+в LDraw/Studio, подмодели — отдельными FILE-блоками. Формат описаний подтверждён
+чтением LDrawStepWriter.Write / LDrawStepReader.Read из Studio 2.26.8_1.
+Собственный тег первой версии читается для совместимости. Автоматический пустой
+последний этап исключён при экспорте.
+
+Открой IO и используй Step List / Step View / Instruction Maker. MCP не управляет
+открытым окном и не обещает автоматического обновления сцены. После внешнего
+изменения файла его нужно открыть заново.
+
+## Каталог и изображения
+
+Библиотека: `D:\Progs\Studio 2.0\ldraw`.
+Индекс: `.cache\studio-catalog.json`, 12 132 основных записи.
+После обновления Studio запусти `.venv\Scripts\python.exe refresh_catalog.py`
+и перезапусти соединение MCP. Кастомные/неофициальные библиотеки не объединяются.
+
+Предпросмотр — автономный z-buffer по реальным треугольникам LDraw, без окон и
+внешних процессов. Прозрачные элементы показаны непрозрачными для читаемости.
+Два вида этапа используют один расчёт видимости. NumPy загружается при старте
+сервера до запуска рабочих потоков.
+
+BRICK_MCP_RENDERER=povray включает дополнительный POV-Ray, заданный через
+POVRAY_EXECUTABLE. На этой установке его Windows-запуск зависал, поэтому основной
+режим автономный. BRICK_MCP_OUTPUT_DIR задаёт каталог PNG.
+BRICK_MCP_AUTO_RENDER=0 отключает лишние картинки старых низкоуровневых команд;
+apply_step и render_step сохраняют явный предпросмотр.
+
+## Проверки и восстановление
 
 ```powershell
 & '.\.venv\Scripts\python.exe' -m pytest tests -q
-& '.\.venv\Scripts\python.exe' check_mcp.py
+& '.\.venv\Scripts\python.exe' check_workflow_mcp.py
+& '.\.venv\Scripts\python.exe' rebuild_cottage_instructions.py
+# Продолжение после обрыва:
+& '.\.venv\Scripts\python.exe' rebuild_cottage_instructions.py 'output\cottage-instructions-...'
 codex mcp get brick
 ```
 
-The smoke check launches the exact command and environment saved in Codex,
-lists the 24 tools, and checks catalog search, batch creation, recoloring,
-movement, rotation, overlaps, BOM, saving and reopening `.io` and `.ldr`.
-It uses MCP over stdio and does not call an AI provider.
+Проверки используют настоящий stdio MCP без платных AI-вызовов.
+У сборки есть checkpoint.io и progress.json.
 
-Verified on 2026-09-06: 204 tests passed; stdio smoke check passed with 24 tools
-and 2.67-second startup. The resulting
-`output\mcp-check-4ayqe4ac\mcp_connection_test.io` was opened in Studio 2.26.8_1:
-three bricks appeared, with the upper brick green and shifted one stud as
-requested through MCP. Studio labels this minimal new IO document "Untitled
-Model" because full Studio document metadata is not generated.
+batch по умолчанию атомарный: останавливается на первой ошибке, восстанавливает
+модель, запрещает запись файлов внутри транзакции. Прежнее поведение доступно
+через atomic=False. Запись модели идёт через временный файл и атомарную замену.
+MCP-вызовы сериализованы вокруг одной активной модели. Если новые команды ещё
+не появились в Codex, переподключи MCP или перезапусти Codex.
 
-After updating Studio or its library, refresh the index:
-
-```powershell
-& '.\.venv\Scripts\python.exe' refresh_catalog.py
-```
-
-Restart the MCP connection afterward to clear its in-memory catalog.
-The index contains the main `ldraw\parts` directory; Studio's unofficial and
-custom libraries are not merged into it.
-
-## Workflow and current limits
-
-Use `search_parts` / `get_part_details`, plan positions in LDU, then `batch`
-for edits. Inspect `check_overlaps` before saving. Batch continues after
-individual errors, so check its `error_count` and save in a separate call.
-When editing existing user models, save to a new path for the first trials.
-
-The model lives in one MCP server process. It is not a live connection to the
-open Studio scene: save the file and open/reopen it in Studio to view changes.
-Save before restarting MCP. Part IDs change after opening a model again.
-
-Overlap checks use bounding boxes and approximate dimensions for many parts;
-they do not prove valid LEGO connections or structural stability.
-LDView is not installed/configured here, so `render_model` and automatic
-image previews are not currently available. Studio can display the saved files.
-
-If the current Codex task does not expose `brick` tools after the config change,
-reload the MCP connection or restart Codex, then continue the task.
+Цвет экземпляра подмодели автоматически превращается в отдельный вариант с
+явными цветами деталей: это сохраняет разноцветные узлы при открытии в Studio.
+Варианты являются независимыми копиями. При проверке Studio показала названия
+основных этапов и правильные цвета цветов. Вкладка может называться Untitled Model
+до сохранения под выбранным пользователем именем.

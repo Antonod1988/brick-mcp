@@ -11,6 +11,12 @@ result
 # python
 __pycache__/
 .coverage
+.venv/
+.bootstrap/
+.cache/
+.pytest_cache/
+*.egg-info/
+output/
 
 # agents
 .agents/
