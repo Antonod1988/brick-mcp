@@ -100,8 +100,22 @@ def test_unsupported_insertion_is_unverified_not_a_false_confirmed_block(monkeyp
         validation, "shape", lambda pn: {"collision_kind": "conservative_box"}
     )
     parts = [
-        dict(id="old", part_number="axle", y=-20),
-        dict(id="new", part_number="axle", y=0),
+        dict(
+            id="old",
+            part_number="axle",
+            x=0,
+            y=-20,
+            z=0,
+            rotation=[1, 0, 0, 0, 1, 0, 0, 0, 1],
+        ),
+        dict(
+            id="new",
+            part_number="axle",
+            x=0,
+            y=0,
+            z=0,
+            rotation=[1, 0, 0, 0, 1, 0, 0, 0, 1],
+        ),
     ]
     report = validation.validate_parts(parts, previous=parts[:1])
     assert (
@@ -109,3 +123,41 @@ def test_unsupported_insertion_is_unverified_not_a_false_confirmed_block(monkeyp
         and report["unverified_access"]
         and not report["blocked_access"]
     )
+
+
+@pytest.mark.parametrize("missing_geometry", [False, True])
+def test_coincident_unknown_parts_are_confirmed_duplicates(
+    monkeypatch, missing_geometry
+):
+    import brick_mcp.validation as validation
+
+    def bounds(p):
+        if missing_geometry:
+            raise FileNotFoundError("Unsupported part")
+        return (p["x"] - 10, p["x"] + 10, 0, 8, -10, 10)
+
+    monkeypatch.setattr(validation, "world_bounds", bounds)
+    monkeypatch.setattr(validation, "connectors", lambda p: None)
+    monkeypatch.setattr(
+        validation, "shape", lambda pn: {"collision_kind": "conservative_box"}
+    )
+    first = dict(
+        id="a",
+        part_number="ball.dat",
+        color=29,
+        x=0,
+        y=0,
+        z=0,
+        rotation=[1, 0, 0, 0, 1, 0, 0, 0, 1],
+    )
+    second = {**first, "id": "b", "color": 5}
+    result = validation.validate_parts([first, second])
+    assert result["status"] == "failed"
+    assert result["overlaps"][0]["reason"] == "Identical part placements"
+    from types import SimpleNamespace
+    from brick_mcp.native_studio import run_native_check
+
+    with pytest.raises(ValueError, match="Duplicate part placement"):
+        run_native_check(SimpleNamespace(flatten=lambda *args: [first, second]))
+    second["x"] = 40
+    assert not validation.validate_parts([first, second])["overlaps"]

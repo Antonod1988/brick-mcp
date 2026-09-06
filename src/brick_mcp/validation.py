@@ -15,6 +15,22 @@ def summary(report):
     }
 
 
+def duplicate_placements(parts):
+    """Exact pose duplicates are invalid even when geometry/physics is unknown."""
+    seen, duplicates = {}, []
+    for p in parts:
+        key = (
+            p["part_number"].casefold(),
+            *(round(v, 6) for v in [p["x"], p["y"], p["z"], *p["rotation"]]),
+        )
+        duplicates.extend(
+            dict(part_a=old, part_b=p, reason="Identical part placements")
+            for old in seen.get(key, ())
+        )
+        seen.setdefault(key, []).append(p)
+    return duplicates
+
+
 def validate_parts(parts, ground_y=None, previous=()):
     if not parts:
         return dict(
@@ -44,17 +60,21 @@ def validate_parts(parts, ground_y=None, previous=()):
             unknown.append({"id": p["id"], "reason": str(exc)})
     if ground_y is None and boxes:
         ground_y = max(b[3] for b in boxes.values())
-    overlaps, potential, blocked, unverified_access = [], [], [], []
+    overlaps = duplicate_placements(parts)
+    duplicate_ids = {(p["part_a"]["id"], p["part_b"]["id"]) for p in overlaps}
+    potential, blocked, unverified_access = [], [], []
     # ponytail: O(n²) broad phase; add a spatial index when large models become slow.
     for i, a in enumerate(parts):
-        if a["id"] not in boxes:
-            continue
         for b in parts[i + 1 :]:
-            if b["id"] not in boxes or not aabbs_overlap(
-                boxes[a["id"]], boxes[b["id"]]
+            pair = {"part_a": a, "part_b": b}
+            if (a["id"], b["id"]) in duplicate_ids:
+                continue
+            if (
+                a["id"] not in boxes
+                or b["id"] not in boxes
+                or not aabbs_overlap(boxes[a["id"]], boxes[b["id"]])
             ):
                 continue
-            pair = {"part_a": a, "part_b": b}
             exact = all(
                 shape(p["part_number"])["collision_kind"] == "regular_body"
                 and all(abs(v - round(v)) < 1e-5 for v in p["rotation"])

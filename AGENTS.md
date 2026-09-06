@@ -17,6 +17,8 @@ Primary reference for AI coding agents (Copilot, Claude, etc.) working inside th
 - `instructions.py` reads/writes native STUDIOSTEPDESC descriptions and step groups.
 - `validation.py` covers ordinary upright studs/receivers and insertion from above;
   it does not prove physical strength or support arbitrary clips/pins/hinges.
+  Exact duplicate placements are rejected even for unknown parts; the native
+  transport uses the same guard so overlaps cannot inflate simulated strength.
 - `native_studio.py` drives a dedicated Studio worker through local request files.
   `apply_step` runs native Stability and Connectivity before committing, including
   later prefixes and affected parent assemblies; `edit_step` does likewise.

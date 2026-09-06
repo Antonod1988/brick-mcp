@@ -13,6 +13,7 @@ from brick_mcp.io_file import write_io_file
 from brick_mcp.ldraw import PartLine
 from brick_mcp.model import StudioProject
 from brick_mcp.catalog import get_part_info
+from brick_mcp.validation import duplicate_placements
 
 
 def is_canvas(part_number):
@@ -70,6 +71,17 @@ def run_native_check(
     include_connectors=False,
     exclude_canvas=False,
 ):
+    parts = [
+        p
+        for p in project.flatten(submodel, through_step)
+        if not (exclude_canvas and is_canvas(p["part_number"]))
+    ]
+    duplicates = duplicate_placements(parts)
+    if duplicates:
+        p = duplicates[0]["part_a"]
+        raise ValueError(
+            f"Duplicate part placement: {p['part_number']} at ({p['x']}, {p['y']}, {p['z']}); native strength result would be misleading"
+        )
     root = os.environ.get(
         "BRICK_STUDIO_BRIDGE_DIR",
         str(Path(__file__).resolve().parents[2] / ".cache/studio-worker/jobs"),
@@ -116,9 +128,7 @@ def run_native_check(
     path = root / (ident + ".io")
     audit = StudioProject.new("audit-" + ident)
     sd = audit._submodel(None)
-    for p in project.flatten(submodel, through_step):
-        if exclude_canvas and is_canvas(p["part_number"]):
-            continue
+    for p in parts:
         sd.commands.append(
             PartLine(
                 p["color"],
